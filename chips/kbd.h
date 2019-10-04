@@ -37,29 +37,23 @@
     Call the function kbd_test_lines() to check the current state of the
     keyboard matrix.
 
-    LICENSE:
+    ## zlib/libpng license
 
-    MIT License
-
-    Copyright (c) 2017 Andre Weissflog
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Copyright (c) 2018 Andre Weissflog
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 */
 #include <stdint.h>
 
@@ -105,33 +99,33 @@ typedef struct {
 } kbd_t;
 
 /* initialize a keyboard matrix instance */
-extern void kbd_init(kbd_t* kbd, int sticky_count);
+void kbd_init(kbd_t* kbd, int sticky_count);
 /* update keyboard matrix state (releases sticky keys), usually call once per frame */
-extern void kbd_update(kbd_t* kbd);
+void kbd_update(kbd_t* kbd);
 /* register a modifier key, layers are between from 0 to KBD_MAX_MOD_KEYS-1 */
-extern void kbd_register_modifier(kbd_t* kbd, int layer, int column, int line);
+void kbd_register_modifier(kbd_t* kbd, int layer, int column, int line);
 /* register a modifier key where the modifier is mapped to an entire keyboard line */
-extern void kbd_register_modifier_line(kbd_t* kbd, int layer, int line);
+void kbd_register_modifier_line(kbd_t* kbd, int layer, int line);
 /* register a modifier key where the modifier is mapped to an entire keyboard column */
-extern void kbd_register_modifier_column(kbd_t* kbd, int layer, int column);
+void kbd_register_modifier_column(kbd_t* kbd, int layer, int column);
 /* register a key */
-extern void kbd_register_key(kbd_t* kbd, int key, int column, int line, int mod_mask);
+void kbd_register_key(kbd_t* kbd, int key, int column, int line, int mod_mask);
 /* add a key to the pressed-key buffer */
-extern void kbd_key_down(kbd_t* kbd, int key);
+void kbd_key_down(kbd_t* kbd, int key);
 /* remove a key from the pressed-key buffer */
-extern void kbd_key_up(kbd_t* kbd, int key);
+void kbd_key_up(kbd_t* kbd, int key);
 /* test keyboard matrix against a column bitmask and return lit lines */
-extern uint16_t kbd_test_lines(kbd_t* kbd, uint16_t column_mask);
+uint16_t kbd_test_lines(kbd_t* kbd, uint16_t column_mask);
 /* test keyboard matrix against a line bitmask and return lit columns */
-extern uint16_t kbd_test_columns(kbd_t* kbd, uint16_t line_mask);
+uint16_t kbd_test_columns(kbd_t* kbd, uint16_t line_mask);
 /* set active column mask (use together with kbd_scan_lines */
-extern void kbd_set_active_columns(kbd_t* kbd, uint16_t column_mask);
+void kbd_set_active_columns(kbd_t* kbd, uint16_t column_mask);
 /* scan active lines (used together with kbd_set_active_columns */
-extern uint16_t kbd_scan_lines(kbd_t* kbd);
+uint16_t kbd_scan_lines(kbd_t* kbd);
 /* set active lines mask (use together with kbd_scan_columns */
-extern void kbd_set_active_lines(kbd_t* kbd, uint16_t line_mask);
+void kbd_set_active_lines(kbd_t* kbd, uint16_t line_mask);
 /* scan active columns (used together with kbd_set_active_lines */
-extern uint16_t kbd_scan_columns(kbd_t* kbd);
+uint16_t kbd_scan_columns(kbd_t* kbd);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -140,11 +134,6 @@ extern uint16_t kbd_scan_columns(kbd_t* kbd);
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef CHIPS_IMPL
 #include <string.h>
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)

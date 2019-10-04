@@ -157,27 +157,23 @@
     A helper function to read a 16-bit value in little-endian format.
     This will do 2 calls to mem_rd().
 
-    ## MIT License
+    ## zlib/libpng license
 
-    Copyright (c) 2017 Andre Weissflog
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Copyright (c) 2018 Andre Weissflog
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 #*/
 #include <stdint.h>
 #include <stdbool.h>
@@ -217,21 +213,21 @@ typedef struct {
 } mem_t;
 
 /* initialize a new mem instance */
-extern void mem_init(mem_t* mem);
+void mem_init(mem_t* mem);
 /* map a range of RAM */
-extern void mem_map_ram(mem_t* mem, int layer, uint16_t addr, uint32_t size, uint8_t* ptr);
+void mem_map_ram(mem_t* mem, int layer, uint16_t addr, uint32_t size, uint8_t* ptr);
 /* map a range of ROM */
-extern void mem_map_rom(mem_t* mem, int layer, uint16_t addr, uint32_t size, const uint8_t* ptr);
+void mem_map_rom(mem_t* mem, int layer, uint16_t addr, uint32_t size, const uint8_t* ptr);
 /* map a range of memory to different read/write pointers (e.g. for RAM behind ROM) */
-extern void mem_map_rw(mem_t* mem, int layer, uint16_t addr, uint32_t size, const uint8_t* read_ptr, uint8_t* write_ptr);
+void mem_map_rw(mem_t* mem, int layer, uint16_t addr, uint32_t size, const uint8_t* read_ptr, uint8_t* write_ptr);
 /* unmap all memory pages in a layer, also updates the CPU-visible page-table */
-extern void mem_unmap_layer(mem_t* mem, int layer);
+void mem_unmap_layer(mem_t* mem, int layer);
 /* unmap all memory pages in all layers, also updates the CPU-visible page-table */
-extern void mem_unmap_all(mem_t* mem);
+void mem_unmap_all(mem_t* mem);
 /* get the host-memory read-ptr of an emulator memory address */
-extern uint8_t* mem_readptr(mem_t* mem, uint16_t addr);
+uint8_t* mem_readptr(mem_t* mem, uint16_t addr);
 /* copy a range of bytes into memory via mem_wr() */
-extern void mem_write_range(mem_t* mem, uint16_t addr, const uint8_t* src, int num_bytes);
+void mem_write_range(mem_t* mem, uint16_t addr, const uint8_t* src, int num_bytes);
 
 /* read a byte at 16-bit address */
 static inline uint8_t mem_rd(mem_t* mem, uint16_t addr) {
@@ -253,6 +249,11 @@ static inline uint16_t mem_rd16(mem_t* mem, uint16_t addr) {
     return (h<<8)|l;
 }
 
+/* read a byte from a specific layer (slow!) */
+uint8_t mem_layer_rd(mem_t* mem, int layer, uint16_t addr);
+/* write a byte to a specific layer (slow!) */
+void mem_layer_wr(mem_t* mem, int layer, uint16_t addr, uint8_t data);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
@@ -260,11 +261,6 @@ static inline uint16_t mem_rd16(mem_t* mem, uint16_t addr) {
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef CHIPS_IMPL
 #include <string.h>
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)
@@ -372,4 +368,22 @@ void mem_write_range(mem_t* m, uint16_t addr, const uint8_t* src, int num_bytes)
         mem_wr(m, addr++, src[i]);
     }
 }
+
+uint8_t mem_layer_rd(mem_t* mem, int layer, uint16_t addr) {
+    CHIPS_ASSERT((layer >= 0) && (layer < MEM_NUM_LAYERS));
+    if (mem->layers[layer][addr>>MEM_PAGE_SHIFT].read_ptr) {
+        return mem->layers[layer][addr>>MEM_PAGE_SHIFT].read_ptr[addr&MEM_PAGE_MASK];
+    }
+    else {
+        return 0xFF;
+    }
+}
+
+void mem_layer_wr(mem_t* mem, int layer, uint16_t addr, uint8_t data) {
+    CHIPS_ASSERT((layer >= 0) && (layer < MEM_NUM_LAYERS));
+    if (mem->layers[layer][addr>>MEM_PAGE_SHIFT].write_ptr) {
+        mem->layers[layer][addr>>MEM_PAGE_SHIFT].write_ptr[addr&MEM_PAGE_MASK] = data;
+    }
+}
+
 #endif /* CHIPS_IMPL */

@@ -1,24 +1,107 @@
 # chips
 
-A toolbox of chips and helper code to write 8-bit emulators in
-dependency-free C99-headers.
+[![Build Status](https://github.com/floooh/chips/workflows/build_and_test/badge.svg)](https://github.com/floooh/chips/actions)
+
+A toolbox of 8-bit chip-emulators, helper code and complete embeddable 
+system emulators in dependency-free C headers (a subset of C99 that
+compiles on gcc, clang and cl.exe).
 
 Tests and example code is in a separate repo: https://github.com/floooh/chips-test
 
-This is the meaty stuff from the YAKC emulator, rewritten from
-C++ in C, moved into its own project.
+The example emulators, compiled to WebAssembly: https://floooh.github.io/tiny8bit/
 
-The YAKC emulator is here:
-- github repo: https://github.com/floooh/yakc
-- asm.js/wasm demo: http://floooh.github.io/virtualkc/
-
+For schematics, manuals and research material, see: https://github.com/floooh/emu-info
 
 ## What's New
+
+* **05-Aug-2019**:
+    - The Z80 and 6502 CPU emulators are now each in a single header instead
+    of being split into a manually written "outer header" which includes
+    another code-generated header with the instruction decoder.
+    No functional changes (I tried a variation of the Z80 emulator which goes
+    back to separate byte registers in a struct instead of merging the
+    registers into 64-bit integers, this saved a couple KBytes code size in
+    WASM but was about 10% slower so I discarded that experiment)
+
+* **31-Dec-2018**: 
+    - A complete set of debugging UI headers using Dear ImGui has been added,
+    each chip emulator has a window which visualizes the pin- and
+    internal-state, and there are helper windows which implement a memory
+    editor, memory "heatmap" (visualize read/write/execute operations),
+    disassembler and CPU step debugger. Finally there are 'integration
+    headers' which implement an entire UI for an emulated system. Note that
+    the implementation part of the UI headers needs to be compiled as C++,
+    the 'public API' of the headers are callable from C though.
+    - The CPU emulators (z80.h and m6502.h) have new trap handling. Instead
+    of predefined "slots", a trap evaluation callback is now installed, which
+    is called at the end of each CPU instruction. This is used extensively by
+    the new debugging UIs to keep track of CPU operations and breakpoint
+    support.
+    - The Amstrad CPC emulation has gained floppy disc loading support, and
+    the video system precision has been improved (many modern graphics demos
+    at least work now instead of having completely broken rendering, but
+    there's still more to be done).
+    - Loading local files via drag'n'drop has been improved in the
+    WebAssembly version, all emulators can now properly detect and load all
+    supported file formats via drag'n'drop.
 
 * **23-Jul-2018**: all chip emulators with callbacks now have an extra
 ```user_data``` argument in the callbacks which is provided in the init
 function, this makes the chip emulators a bit more flexible when more than
 one emulator of the same type is used in a program
+
+## System Emulators
+
+The directory ```systems``` contains a number of header-only 8-bit
+computer emulators which can be embedded into applications that
+provide keyboard input, and render the emulator's generated
+video- and audio-output.
+
+Note that accuracy of the system emulators varies quite a lot,
+and is mainly defined by what games, demos and tests have been
+used for testing and improving the emulation.
+
+The following system emulators are provided:
+
+### KC85/2, /3 and /4
+
+An East German Z80-based computer with 320x256 color graphics, beeper
+sound a powerful expansion slot system and (for its time) innovative
+operating system. The KC85/2 family was designed and built
+by VEB Mikroelektronik Mühlhausen between 1984 and 1989.
+
+### Z9001 (aka KC85/1), KC87
+
+Another East German 8-bitter created by Robotron Dresden.
+This was a more conventional, less innovative design compared 
+to the KC85/2, both in hardware and software. The Z9001 family
+only had 40x20 ASCII pseudo-graphics display with optional
+color support.
+
+### Z1013
+
+This was the most simple and cheapest Z80-based computer built
+in Eastern Germany that still resembled a 'proper' computer which
+could be attached to a TV. It was also the only Eastern German computer
+that was available as assemble-youself-kit for the general public.
+
+### ZX Spectrum 48k and 128
+
+The Sinclair ZX Spectrum is supported as the original 48k model and
+the improved 128 model with a proper sound chip (the AY-3-8912, which was 
+also used in the Amstrad CPC).
+
+### CPC 464, 6128 and KC Compact
+
+FIXME
+
+### C64
+
+FIXME
+
+### Acorn Atom
+
+FIXME
 
 ## Chip Emulators
 
@@ -33,13 +116,21 @@ The Zilog Z80 CPU.
 - all undocumented instructions supported
 - internal WZ register and undocumented XF and YF flags supported
 - support for interrupt-priority handling (daisy chain) with help from the tick callback
-- runs the ZEXDOC and ZEXALL tests (more to be added)
+- runs the ZEXDOC and ZEXALL tests
+- runs the CPU test of the FUSE ZX Spectrum emulator, with the following exceptions:
+  - the state of the XF/YF undocumented flags is ignored for indirect BIT
+  test instructions, FUSE doesn't agree here with ZEXALL and I think ZEXALL
+  is right (the state of the XF/YF flags depends on the current state of the
+  internal WZ register)
+  - FUSE assumes that the PC after a HALT instruction has been incremented,
+  while the chips Z80 emulator doesn't incrmenent the PC, this shouldn't make
+  any difference though
+- properly handles sequences of DD/FD prefix bytes
+- flexible trap callback for hooking in debuggers and "native code" handlers
 - NOT IMPLEMENTED/TODO:
-    - NMI (non-maskable interrupts)
     - interrupt mode 0
     - refresh cycle in second half of opcode fetch machine cycle
     - bus request/acknowledge (BUSRQ/BUSAK pins)
-    - sequences of DD/FD prefix bytes behave differently than a real CPU
 
 ### Z80 PIO (chips/z80pio.h)
 
@@ -69,6 +160,7 @@ The MOS Technology 6502 CPU.
 - emulates all(?) quirks (like redundant and 'junk' read/write cycles, variable cycle counts in some addressing modes, page boundary wrap-around in indirect jump, etc...), mostly verified via visual6502.org
 - emulates the known and useful 'documented-undocumented' opcodes (like LAX, SAX, DCP, ...)
 - decimal mode implemented, can be disabled
+- same powerful trap callback as the Z80 emulator
 - test coverage:
     - **NESTEST**: completely working (this runs through all documented, and most 'common'
       undocumented instructions but doesn't test decimal mode)
@@ -128,6 +220,8 @@ Motorola 6845 video address generator and variants.
     - interlace mode
     - the cursor pin
     - the light-pen functionality
+- NOTE: emulation quality is "ok" for most Amstrad graphics demos, but more
+improvements are needed
 
 ### MC6847 (chips/mc6847.h)
 
@@ -183,9 +277,21 @@ MOS Technology 6526 Complex Interface Adapter
 
 ### MOS 6569 VIC-II for PAL-B (chips/m6569.h)
 
-MOS Technology 6569 Video Interface Chip VIC-II
+MOS Technology 6569 Video Interface Chip VIC-II (FIXME: needs more info)
 
-(Work In Progress)
+### MOS 6581 SID (chips/m6581.h)
+
+The C64 sound chip (FIXME: needs more info)
+
+### AM40010 Amstrad CPC Gate Array Emulation (chips/am40010.h)
+
+This emulated the Amstrad CPC gate array chip, and also integrates the PAL
+chip for bankswitching in the 6128. 
+
+### UPD765 Floppy Disc Controller (chips/upd765.h)
+
+This is a basic emulation of the UPD765 floppy controller. Currently only
+features required by the Amstrad CPC are implemented.
 
 ## Helper Code
 
@@ -215,14 +321,19 @@ A square-wave beeper found in many simple home computers.
 - toggle beeper state on/off from CPU tick callback
 - tick function returns true when new audio-sample is ready
 
-### CRT Cathode Ray Tube emulation (chips/crt.h)
-
-A helper class to emulate the beam-position and -visibility of a cathode-ray-tube,
-driven by HSYNC an VSYNC signals (for instance as generated by a mc6847 or mc6845).
-
-- currently only supports the PAL video standard
-
 ### Clock (chips/clk.h)
 
-Clock/timer helper functions. This currently only has a single function to
-convert a duration in microseconds into a number of CPU ticks.
+Helper function to convert a clock frequency in Hz to a number of ticks,
+and to keep track of the 'left over' ticks from one frame to the next.
+
+### Floppy Disc Drive (chips/fdd.h)
+
+A basic floppy disc drive emulator, currently only basic functionality
+as needed by the Amstrad CPC emulation.
+
+### Amstrad CPC Disk Image Loader (chips/fdd_cpc.h)
+
+This is an extension-header for fdd.h which adds support to read
+an Amstrad CPC .DSK disk image file and "insert" it into the Floppy Disc Drive
+(fdd.h).
+

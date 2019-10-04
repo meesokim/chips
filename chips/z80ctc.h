@@ -48,7 +48,7 @@
 
     ## Functions:
     ~~~C
-     void z80ctc_init(z80ctc_t* ctc)
+    void z80ctc_init(z80ctc_t* ctc)
     ~~~
         Initializes a new Z80 CTC instance and puts it into the reset state.
 
@@ -64,7 +64,7 @@
         Takes a pin mask as input, and returns a potentially modified
         pin mask.
 
-        The following input pins are read:
+        The following input pins are read function:
 
         - **M1**:       must be unset
         - **IORQ|CE**:  must both be set
@@ -115,41 +115,23 @@
         extract 8-bit data bus value from 64-bit pin mask (identical with
         Z80_GET_DATA() from the z80.h header)
 
-    ## Pin Definitions
+    ## zlib/libpng license
 
-    All pin locations from 0 to 36 are shared with the CPU. Chip-type
-    specific pins start at position 44 This enables efficient bus-sharing
-    with the CPU and other Z80-family chips.
-
-    The Z80 CTC pin layout is as follows:
-
-    - 0..16:    address bus A0..A15 (not connected)
-    - 16..23:   data bus D0..D7
-    - 24..36:   CPU pins (some shared directly with CTC)
-    - 37..39:   'virtual' interrupt system pins
-    - 44..53:   CTC-specific pins
-
-    ## MIT License
-
-    Copyright (c) 2017 Andre Weissflog
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Copyright (c) 2018 Andre Weissflog
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 #*/
 #include <stdint.h>
 #include <stdbool.h>
@@ -170,16 +152,16 @@ extern "C" {
 #define Z80CTC_RETI     (1ULL<<38)   /* CPU has decoded a RETI instruction (same as Z80_RETI) */
 
 /* CTC specific pins starting at bit 40 */
-#define Z80CTC_CE       (1ULL<<44)   /* Chip Enable */
-#define Z80CTC_CS0      (1ULL<<45)   /* Channel Select Bit 0 */
-#define Z80CTC_CS1      (1ULL<<46)   /* Channel Select Bit 1 */
-#define Z80CTC_CLKTRG0  (1ULL<<47)   /* Clock/Timer Trigger 0 */
-#define Z80CTC_CLKTRG1  (1ULL<<48)   /* Clock/Timer Trigger 1 */
-#define Z80CTC_CLKTRG2  (1ULL<<49)   /* Clock/Timer Trigger 2 */
-#define Z80CTC_CLKTRG3  (1ULL<<50)   /* Clock/Timer Trigger 3 */
-#define Z80CTC_ZCTO0    (1ULL<<51)   /* Zero Count/Timeout 0 */
-#define Z80CTC_ZCTO1    (1ULL<<52)   /* Zero Count/Timeout 1 */
-#define Z80CTC_ZCTO2    (1ULL<<53)   /* Zero Count/Timeout 2 */
+#define Z80CTC_CE       (1ULL<<40)   /* Chip Enable */
+#define Z80CTC_CS0      (1ULL<<41)   /* Channel Select Bit 0 */
+#define Z80CTC_CS1      (1ULL<<42)   /* Channel Select Bit 1 */
+#define Z80CTC_CLKTRG0  (1ULL<<43)   /* Clock/Timer Trigger 0 */
+#define Z80CTC_CLKTRG1  (1ULL<<44)   /* Clock/Timer Trigger 1 */
+#define Z80CTC_CLKTRG2  (1ULL<<45)   /* Clock/Timer Trigger 2 */
+#define Z80CTC_CLKTRG3  (1ULL<<46)   /* Clock/Timer Trigger 3 */
+#define Z80CTC_ZCTO0    (1ULL<<47)   /* Zero Count/Timeout 0 */
+#define Z80CTC_ZCTO1    (1ULL<<48)   /* Zero Count/Timeout 1 */
+#define Z80CTC_ZCTO2    (1ULL<<49)   /* Zero Count/Timeout 2 */
 
 /*
     Z80 CTC control register bits
@@ -236,6 +218,7 @@ typedef struct {
 */
 typedef struct {
     z80ctc_channel_t chn[Z80CTC_NUM_CHANNELS];
+    uint64_t pins;
 } z80ctc_t;
 
 /* extract 8-bit data bus from 64-bit pins */
@@ -244,11 +227,11 @@ typedef struct {
 #define Z80CTC_SET_DATA(p,d) {p=((p&~0xFF0000)|((d&0xFF)<<16));}
 
 /* initialize a new Z80 CTC instance */
-extern void z80ctc_init(z80ctc_t* ctc);
+void z80ctc_init(z80ctc_t* ctc);
 /* reset an existing Z80 CTC instance */
-extern void z80ctc_reset(z80ctc_t* ctc);
+void z80ctc_reset(z80ctc_t* ctc);
 /* perform an IORQ machine cycle */
-extern uint64_t z80ctc_iorq(z80ctc_t* ctc, uint64_t pins);
+uint64_t z80ctc_iorq(z80ctc_t* ctc, uint64_t pins);
 
 /*
     Internal inline function!
@@ -256,7 +239,7 @@ extern uint64_t z80ctc_iorq(z80ctc_t* ctc, uint64_t pins);
     called when the downcounter reaches zero, request interrupt,
     trigger ZCTO pin and reload downcounter
 */
-static inline uint64_t _z80ctc_counter_zero(z80ctc_channel_t* chn, uint64_t pins, int chn_id) {
+static inline uint64_t _z80ctc_counter_zero(z80ctc_t* ctc, z80ctc_channel_t* chn, uint64_t pins, int chn_id) {
     /* down counter has reached zero, trigger interrupt and ZCTO pin */
     if (chn->control & Z80CTC_CTRL_EI) {
         /* interrupt enabled, request an interrupt */
@@ -266,6 +249,7 @@ static inline uint64_t _z80ctc_counter_zero(z80ctc_channel_t* chn, uint64_t pins
     if (chn_id < 4) {
         /* set the zcto pin */
         pins |= Z80CTC_ZCTO0<<chn_id;
+        ctc->pins = pins;
     }
     /* reload the down counter */
     chn->down_counter = chn->constant;
@@ -283,11 +267,11 @@ static inline uint64_t _z80ctc_counter_zero(z80ctc_channel_t* chn, uint64_t pins
       the waiting flag is cleared and timing starts
     - if the channel is in counter mode, the counter decrements
 */
-static inline uint64_t _z80ctc_active_edge(z80ctc_channel_t* chn, uint64_t pins, int chn_id) {
+static inline uint64_t _z80ctc_active_edge(z80ctc_t* ctc, z80ctc_channel_t* chn, uint64_t pins, int chn_id) {
     if ((chn->control & Z80CTC_CTRL_MODE) == Z80CTC_CTRL_MODE_COUNTER) {
         /* counter mode */
         if (0 == --chn->down_counter) {
-            pins = _z80ctc_counter_zero(chn, pins, chn_id);
+            pins = _z80ctc_counter_zero(ctc, chn, pins, chn_id);
         }
     }
     else if (chn->waiting_for_trigger) {
@@ -311,7 +295,7 @@ static inline uint64_t z80ctc_tick(z80ctc_t* ctc, uint64_t pins) {
                 chn->ext_trigger = trg;
                 /* rising/falling edge trigger */
                 if (chn->trigger_edge == trg) {
-                    pins = _z80ctc_active_edge(chn, pins, chn_id);
+                    pins = _z80ctc_active_edge(ctc, chn, pins, chn_id);
                 }
             }
         }
@@ -320,7 +304,7 @@ static inline uint64_t z80ctc_tick(z80ctc_t* ctc, uint64_t pins) {
             if (0 == ((--chn->prescaler) & chn->prescaler_mask)) {
                 /* prescaler has reached zero, tick the down counter */
                 if (0 == --chn->down_counter) {
-                    pins = _z80ctc_counter_zero(chn, pins, chn_id);
+                    pins = _z80ctc_counter_zero(ctc, chn, pins, chn_id);
                 }
             }
         }
@@ -371,7 +355,6 @@ static inline uint64_t z80ctc_int(z80ctc_t* ctc, uint64_t pins) {
             }
             /* need to request interrupt? */
             if (chn->int_state & Z80CTC_INT_NEEDED) {
-                pins |= Z80CTC_INT;
                 chn->int_state &= ~Z80CTC_INT_NEEDED;
                 chn->int_state |= Z80CTC_INT_REQUESTED;
             }
@@ -388,6 +371,11 @@ static inline uint64_t z80ctc_int(z80ctc_t* ctc, uint64_t pins) {
             if (0 != chn->int_state) {
                 pins &= ~Z80CTC_IEIO;
             }
+            /* set Z80_INT pin state during INT_REQUESTED */
+            if (chn->int_state & Z80CTC_INT_REQUESTED) {
+                pins |= Z80CTC_INT;
+                ctc->pins = pins;
+            }
         }
     }
     return pins;
@@ -400,11 +388,6 @@ static inline uint64_t z80ctc_int(z80ctc_t* ctc, uint64_t pins) {
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef CHIPS_IMPL
 #include <string.h>
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)
@@ -474,7 +457,7 @@ uint64_t _z80ctc_write(z80ctc_t* ctc, uint64_t pins, int chn_id, uint8_t data) {
 
         /* changing the Trigger Slope trigger an 'active edge' */
         if ((old_ctrl & Z80CTC_CTRL_EDGE) != (chn->control & Z80CTC_CTRL_EDGE)) {
-            pins = _z80ctc_active_edge(chn, pins, chn_id);
+            pins = _z80ctc_active_edge(ctc, chn, pins, chn_id);
         }
     }
     else {
@@ -508,6 +491,10 @@ uint64_t z80ctc_iorq(z80ctc_t* ctc, uint64_t pins) {
             const uint8_t data = Z80CTC_GET_DATA(pins);
             pins = _z80ctc_write(ctc, pins, chn_id, data);
         }
+        ctc->pins = pins;
+    }
+    else {
+        ctc->pins = (ctc->pins & ~(Z80CTC_CE|Z80CTC_M1|Z80CTC_IORQ|Z80CTC_RD)) | (pins & (Z80CTC_CE|Z80CTC_M1|Z80CTC_IORQ|Z80CTC_RD));
     }
     return pins;
 }

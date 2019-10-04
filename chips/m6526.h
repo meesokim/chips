@@ -50,27 +50,23 @@
 
     TODO: Documentation
     
-    ## MIT License
+    ## zlib/libpng license
 
     Copyright (c) 2018 Andre Weissflog
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 #*/
 #include <stdint.h>
 #include <stdbool.h>
@@ -108,6 +104,25 @@ extern "C" {
 #define M6526_TOD   (1ULL<<44)
 #define M6526_CNT   (1ULL<<45)
 
+/* port I/O pins */
+#define M6526_PA0   (1ULL<<48)
+#define M6526_PA1   (1ULL<<49)
+#define M6526_PA2   (1ULL<<50)
+#define M6526_PA3   (1ULL<<51)
+#define M6526_PA4   (1ULL<<52)
+#define M6526_PA5   (1ULL<<53)
+#define M6526_PA6   (1ULL<<54)
+#define M6526_PA7   (1ULL<<55)
+
+#define M6526_PB0   (1ULL<<56)
+#define M6526_PB1   (1ULL<<57)
+#define M6526_PB2   (1ULL<<58)
+#define M6526_PB3   (1ULL<<59)
+#define M6526_PB4   (1ULL<<60)
+#define M6526_PB5   (1ULL<<61)
+#define M6526_PB6   (1ULL<<62)
+#define M6526_PB7   (1ULL<<63)
+
 /* register indices */
 #define M6526_REG_PRA       (0)     /* peripheral data reg A */
 #define M6526_REG_PRB       (1)     /* peripheral data reg B */
@@ -132,6 +147,21 @@ extern "C" {
 typedef uint8_t (*m6526_in_t)(int port_id, void* user_data);
 typedef void (*m6526_out_t)(int port_id, uint8_t data, void* user_data);
 
+/*--- control-register flag testing macros ---*/
+#define M6526_TIMER_STARTED(cr)     (0!=((cr)&(1<<0)))
+#define M6526_PBON(cr)              (0!=((cr)&(1<<1)))
+#define M6526_OUTMODE_TOGGLE(cr)    (0!=((cr)&(1<<2)))
+#define M6526_RUNMODE_ONESHOT(cr)   (0!=((cr)&(1<<3)))
+#define M6526_FORCE_LOAD(cr)        (0!=((cr)&(1<<4)))
+#define M6526_TA_INMODE_PHI2(cra)   (0==((cra)&(1<<5)))
+#define M6526_TA_SPMODE_OUTPUT(cra) (0!=((cra)&(1<<6)))
+#define M6526_TA_TODIN_50HZ(cra)    (0!=((cra)&(1<<7)))
+#define M6526_TB_INMODE_PHI2(crb)   (0==((crb)&((1<<6)|(1<<5))))
+#define M6526_TB_INMODE_CNT(crb)    ((1<<5)==((crb)&((1<<6)|(1<<5))))
+#define M6526_TB_INMODE_TA(crb)     ((1<<6)==((crb)&((1<<6)|(1<<5))))
+#define M6526_TB_INMODE_TACNT(crb)  (((1<<6)|(1<<5))==((crb)&((1<<6)|(1<<5))))
+#define M6526_TB_ALARM_ALARM(crb)   (0!=((crb)&(1<<7)))
+
 /* m6526 initialization parameters */
 typedef struct {
     m6526_in_t in_cb;
@@ -144,7 +174,8 @@ typedef struct {
     uint8_t reg;        /* port register */
     uint8_t ddr;        /* data direction register */
     uint8_t inp;        /* input latch */
-    uint8_t last_out;   /* last value to reduce call to out callback */
+    uint8_t out;        /* last output value */
+    uint8_t port;       /* current port pin state */
 } m6526_port_t;
 
 /* timer state */
@@ -175,6 +206,7 @@ typedef struct {
     m6526_timer_t ta;
     m6526_timer_t tb;
     m6526_int_t intr;
+    uint64_t pins;
     m6526_in_t in_cb;
     m6526_out_t out_cb;
     void* user_data;
@@ -186,15 +218,17 @@ typedef struct {
 #define M6526_SET_DATA(p,d) {p=((p&~0xFF0000)|((d&0xFF)<<16));}
 /* merge 4-bit register-select address into 64-bit pins */
 #define M6526_SET_ADDR(p,d) {p=((p&~0xF)|(d&0xF));}
+/* set port A/B pins in bitmask */
+#define M6526_SET_PAB(p,a,b) {p=(p&0x0000FFFFFFFFFFFFULL)|(((a)&0xFFULL)<<48)|(((b)&0xFFULL)<<56);}
 
 /* initialize a new m6526_t instance */
-extern void m6526_init(m6526_t* c, m6526_desc_t* desc);
+void m6526_init(m6526_t* c, const m6526_desc_t* desc);
 /* reset an existing m6526_t instance */
-extern void m6526_reset(m6526_t* c);
+void m6526_reset(m6526_t* c);
 /* perform an IO request */
-extern uint64_t m6526_iorq(m6526_t* c, uint64_t pins);
+uint64_t m6526_iorq(m6526_t* c, uint64_t pins);
 /* tick the m6526_t instance, return true if interrupt requested */
-extern uint64_t m6526_tick(m6526_t* c, uint64_t pins);
+uint64_t m6526_tick(m6526_t* c, uint64_t pins);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -203,11 +237,6 @@ extern uint64_t m6526_tick(m6526_t* c, uint64_t pins);
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef CHIPS_IMPL
 #include <string.h>
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)
@@ -217,7 +246,8 @@ static void _m6526_init_port(m6526_port_t* p) {
     p->reg = 0;
     p->ddr = 0;
     p->inp = 0;
-    p->last_out = 0xFF;
+    p->out = 0xFF;
+    p->port = 0;
 }
 
 static void _m6526_init_timer(m6526_timer_t* t) {
@@ -239,7 +269,7 @@ static void _m6526_init_interrupt(m6526_int_t* intr) {
     intr->flag = false;
 }
 
-void m6526_init(m6526_t* c, m6526_desc_t* desc) {
+void m6526_init(m6526_t* c, const m6526_desc_t* desc) {
     CHIPS_ASSERT(c && desc && desc->in_cb && desc->out_cb);
     memset(c, 0, sizeof(*c));
     c->in_cb = desc->in_cb;
@@ -261,19 +291,8 @@ void m6526_reset(m6526_t* c) {
     _m6526_init_timer(&c->ta);
     _m6526_init_timer(&c->tb);
     _m6526_init_interrupt(&c->intr);
+    c->pins = 0;
 }
-
-/*--- control-register flag testing macros ---*/
-#define _M6526_TIMER_STARTED(cr)    (0!=((cr)&(1<<0)))
-#define _M6526_PBON(cr)             (0!=((cr)&(1<<1)))
-#define _M6526_OUTMODE_TOGGLE(cr)   (0!=((cr)&(1<<2)))
-#define _M6526_RUNMODE_ONESHOT(cr)  (0!=((cr)&(1<<3)))
-#define _M6526_FORCE_LOAD(cr)       (0!=((cr)&(1<<4)))
-#define _M6526_TA_INMODE_PHI2(cra)  (0==((cra)&(1<<5)))
-#define _M6526_TB_INMODE_PHI2(crb)  (0==((crb)&((1<<6)|(1<<5))))
-#define _M6526_TB_INMODE_CNT(crb)   ((1<<5)==((crb)&((1<<6)|(1<<5))))
-#define _M6526_TB_INMODE_TA(crb)    ((1<<6)==((crb)&((1<<6)|(1<<5))))
-#define _M6526_TB_INMODE_TACNT(crb) (((1<<6)|(1<<5))==((crb)&((1<<6)|(1<<5))))
 
 /*--- delay-pipeline macros and functions ---*/
 /* set a new state at pipeline pos */
@@ -284,11 +303,11 @@ void m6526_reset(m6526_t* c) {
 #define _M6526_PIP_STEP(pip) (pip>>=1)
 
 /*--- port implementation ---*/
-static uint8_t _m6526_merge_pb67(m6526_t* c, uint8_t data) {
+static inline uint8_t _m6526_merge_pb67(m6526_t* c, uint8_t data) {
     /* merge timer state bits into data byte */
-    if (_M6526_PBON(c->ta.cr)) {
+    if (M6526_PBON(c->ta.cr)) {
         data &= ~(1<<6);
-        if (_M6526_OUTMODE_TOGGLE(c->ta.cr)) {
+        if (M6526_OUTMODE_TOGGLE(c->ta.cr)) {
             /* timer A toggle state into bit 6 */
             if (c->ta.t_bit) {
                 data |= (1<<6);
@@ -301,9 +320,9 @@ static uint8_t _m6526_merge_pb67(m6526_t* c, uint8_t data) {
             }
         }
     }
-    if (_M6526_PBON(c->tb.cr)) {
+    if (M6526_PBON(c->tb.cr)) {
         data &= ~(1<<7);
-        if (_M6526_OUTMODE_TOGGLE(c->tb.cr)) {
+        if (M6526_OUTMODE_TOGGLE(c->tb.cr)) {
             /* timer B toggle state into bit 7 */
             if (c->tb.t_bit) {
                 data |= (1<<7);
@@ -319,26 +338,30 @@ static uint8_t _m6526_merge_pb67(m6526_t* c, uint8_t data) {
     return data;
 }
 
-static void _m6526_update_pa(m6526_t* c) {
+static inline void _m6526_update_pa(m6526_t* c) {
+    /* FIXME: is this correct? (using reg without ddr mask) */
     uint8_t data = c->pa.reg;
     data |= c->pa.inp & ~c->pa.ddr;
-    if (data != c->pa.last_out) {
-        c->pa.last_out = data;
+    if (data != c->pa.out) {
+        c->pa.out = data;
         c->out_cb(M6526_PORT_A, data, c->user_data);
     }
+    c->pa.port = (c->pa.out & c->pa.ddr) | (c->pa.inp & ~c->pa.ddr);
 }
 
-static void _m6526_update_pb(m6526_t* c) {
+static inline void _m6526_update_pb(m6526_t* c) {
+    /* FIXME: is this correct? (using reg without ddr mask) */
     uint8_t data = c->pb.reg;
     data |= c->pb.inp & ~c->pb.ddr;
     data = _m6526_merge_pb67(c, data);
-    if (data != c->pb.last_out) {
-        c->pb.last_out = data;
+    if (data != c->pb.out) {
+        c->pb.out = data;
         c->out_cb(M6526_PORT_B, data, c->user_data);
     }
+    c->pb.port = (c->pb.out & c->pb.ddr) | (c->pb.inp & ~c->pb.ddr);
 }
 
-static uint8_t _m6526_read_pa(m6526_t* c) {
+static inline uint8_t _m6526_read_pa(m6526_t* c) {
     /* datasheet: "On a READ, the PR reflects the information present
        on the actual port pins (PA0-PA7, PB0-PB7) for both input and output bits.
     */
@@ -349,6 +372,7 @@ static uint8_t _m6526_read_pa(m6526_t* c) {
     else {
         c->pa.inp = c->in_cb(M6526_PORT_A, c->user_data) & c->pa.reg;
     }
+    c->pa.port = (c->pa.out & c->pa.ddr) | (c->pa.inp & ~c->pa.ddr);
     return c->pa.inp;
 }
 
@@ -362,6 +386,7 @@ static uint8_t _m6526_read_pb(m6526_t* c) {
     }
     c->pb.inp = data;
     data = _m6526_merge_pb67(c, data);
+    c->pb.port = (c->pb.out & c->pb.ddr) | (c->pb.inp & ~c->pb.ddr);
     return data;
 }
 
@@ -394,7 +419,7 @@ static uint8_t _m6526_read_icr(m6526_t* c) {
     return data;
 }
 
-static uint64_t _m6526_update_irq(m6526_t* c, uint64_t pins) {
+static void _m6526_update_irq(m6526_t* c, uint64_t pins) {
     /* see Figure 5 https://ist.uwaterloo.ca/~schepers/MJK/cia6526.html */
 
     /* timer A underflow interrupt? */
@@ -417,7 +442,6 @@ static uint64_t _m6526_update_irq(m6526_t* c, uint64_t pins) {
     if (_M6526_PIP_TEST(c->intr.pip_irq, 0)) {
         c->intr.icr |= (1<<7);
     }
-    return pins;
 }
 
 /*--- timer implementation ---*/
@@ -437,7 +461,7 @@ static void _m6526_tick_timer(m6526_timer_t* t) {
     if (t->t_out) {
         t->t_bit = !t->t_bit;
         /* reset started flag if in one-shot mode */
-        if (_M6526_RUNMODE_ONESHOT(t->cr) || _M6526_PIP_TEST(t->pip_oneshot,0)) {
+        if (M6526_RUNMODE_ONESHOT(t->cr) || _M6526_PIP_TEST(t->pip_oneshot,0)) {
             t->cr &= ~(1<<0);
         }
         _M6526_PIP_SET(t->pip_load, 0, true);
@@ -452,54 +476,54 @@ static void _m6526_tick_timer(m6526_timer_t* t) {
 
 static void _m6526_tick_pipeline(m6526_t* c) {
     /* timer A counter pipeline (FIXME: CNT) */
-    if (_M6526_TA_INMODE_PHI2(c->ta.cr)) {
+    if (M6526_TA_INMODE_PHI2(c->ta.cr)) {
         _M6526_PIP_SET(c->ta.pip_count, 2, true);
     }
-    if (!_M6526_TIMER_STARTED(c->ta.cr)) {
+    if (!M6526_TIMER_STARTED(c->ta.cr)) {
         _M6526_PIP_SET(c->ta.pip_count, 2, false);
     }
     _M6526_PIP_STEP(c->ta.pip_count);
     /* timer A load-from-latch pipeline */
-    if (_M6526_FORCE_LOAD(c->ta.cr)) {
+    if (M6526_FORCE_LOAD(c->ta.cr)) {
         _M6526_PIP_SET(c->ta.pip_load, 1, true);
         c->ta.cr &= ~(1<<4);
     }
     _M6526_PIP_STEP(c->ta.pip_load);
     /* timer A oneshot pipeline */
-    if (_M6526_RUNMODE_ONESHOT(c->ta.cr)) {
+    if (M6526_RUNMODE_ONESHOT(c->ta.cr)) {
         _M6526_PIP_SET(c->ta.pip_oneshot, 1, true);
     }    
     _M6526_PIP_STEP(c->ta.pip_oneshot);
 
     /* timer B counter pipeline (FIMXE: CNT) */
     bool tb_active = false;
-    if (_M6526_TB_INMODE_PHI2(c->tb.cr)) {
+    if (M6526_TB_INMODE_PHI2(c->tb.cr)) {
         tb_active = true;
     }
-    else if (_M6526_TB_INMODE_TA(c->tb.cr)) {
+    else if (M6526_TB_INMODE_TA(c->tb.cr)) {
         tb_active = c->ta.t_out;
     }
-    else if (_M6526_TB_INMODE_CNT(c->tb.cr)) {
+    else if (M6526_TB_INMODE_CNT(c->tb.cr)) {
         tb_active = false;   // FIXME: CNT always high for now
     }
-    else if (_M6526_TB_INMODE_TACNT(c->tb.cr)) {
+    else if (M6526_TB_INMODE_TACNT(c->tb.cr)) {
         tb_active = c->ta.t_out; // FIXME: CNT always high for now
     }
     _M6526_PIP_SET(c->tb.pip_count, 2, tb_active);
-    if (!_M6526_TIMER_STARTED(c->tb.cr)) {
+    if (!M6526_TIMER_STARTED(c->tb.cr)) {
         _M6526_PIP_SET(c->tb.pip_count, 2, false);
     }
     _M6526_PIP_STEP(c->tb.pip_count);
 
     /* timer B load-from-latch pipeline */
-    if (_M6526_FORCE_LOAD(c->tb.cr)) {
+    if (M6526_FORCE_LOAD(c->tb.cr)) {
         _M6526_PIP_SET(c->tb.pip_load, 1, true);
         c->tb.cr &= ~(1<<4);
     }
     _M6526_PIP_STEP(c->tb.pip_load);
 
     /* timer B oneshot pipeline */
-    if (_M6526_RUNMODE_ONESHOT(c->tb.cr)) {
+    if (M6526_RUNMODE_ONESHOT(c->tb.cr)) {
         _M6526_PIP_SET(c->tb.pip_oneshot, 1, true);
     }    
     _M6526_PIP_STEP(c->tb.pip_oneshot);
@@ -516,10 +540,15 @@ uint64_t m6526_tick(m6526_t* c, uint64_t pins) {
     _m6526_tick_timer(&c->ta);
     _m6526_tick_timer(&c->tb);
     _m6526_update_pb(c);    /* state of PB6/PB7 might have changed */
-    pins = _m6526_update_irq(c, pins);
+    _m6526_update_irq(c, pins);
     _m6526_tick_pipeline(c);
     if (0 != (c->intr.icr & (1<<7))) {
         pins |= M6526_IRQ;
+        c->pins |= M6526_IRQ;
+    }
+    else {
+        pins &= ~M6526_IRQ;
+        c->pins &= ~M6526_IRQ;
     }
     return pins;
 }
@@ -527,7 +556,7 @@ uint64_t m6526_tick(m6526_t* c, uint64_t pins) {
 static void _m6526_write_cr(m6526_t* c, m6526_timer_t* t, uint8_t data) {
 
     /* if the start bit goes from 0 to 1, set the current toggle-bit-state to 1 */
-    if (!_M6526_TIMER_STARTED(t->cr) && _M6526_TIMER_STARTED(data)) {
+    if (!M6526_TIMER_STARTED(t->cr) && M6526_TIMER_STARTED(data)) {
         t->t_bit = true;
     }
     t->cr = data;
@@ -560,7 +589,7 @@ static void _m6526_write(m6526_t* c, uint8_t addr, uint8_t data) {
         case M6526_REG_TAHI:
             c->ta.latch = (data<<8) | (c->ta.latch & 0x00FF);
             /* if timer is not running, writing hi-byte load counter form latch */
-            if (!_M6526_TIMER_STARTED(c->ta.cr)) {
+            if (!M6526_TIMER_STARTED(c->ta.cr)) {
                 _M6526_PIP_SET(c->ta.pip_load, 1, true);
             }
             break;
@@ -570,7 +599,7 @@ static void _m6526_write(m6526_t* c, uint8_t addr, uint8_t data) {
         case M6526_REG_TBHI:
             c->tb.latch = (data<<8) | (c->tb.latch & 0x00FF);
             /* if timer is not running, writing hi-byte writes latch */
-            if (!_M6526_TIMER_STARTED(c->tb.cr)) {
+            if (!M6526_TIMER_STARTED(c->tb.cr)) {
                 _M6526_PIP_SET(c->tb.pip_load, 1, true);
             }
             break;
@@ -641,6 +670,8 @@ uint64_t m6526_iorq(m6526_t* c, uint64_t pins) {
             uint8_t data = M6526_GET_DATA(pins);
             _m6526_write(c, addr, data);
         }
+        M6526_SET_PAB(pins, c->pa.port, c->pb.port);
+        c->pins = pins;
     }
     return pins;
 }

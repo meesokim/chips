@@ -39,6 +39,23 @@
 
     - http://blog.kevtris.org/?p=13
 
+    ## zlib/libpng license
+
+    Copyright (c) 2018 Andre Weissflog
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 #*/
 #include <stdint.h>
 #include <stdbool.h>
@@ -201,16 +218,18 @@ typedef struct {
     float sample_accum_count;
     float sample_mag;
     float sample;
+    /* debug inspection */
+    uint64_t pins;
 } m6581_t;
 
 /* initialize a new m6581_t instance */
-extern void m6581_init(m6581_t* sid, m6581_desc_t* desc);
+void m6581_init(m6581_t* sid, const m6581_desc_t* desc);
 /* reset a m6581_t instance */
-extern void m6581_reset(m6581_t* sid);
+void m6581_reset(m6581_t* sid);
 /* read/write m6581_t registers */
-extern uint64_t m6581_iorq(m6581_t* sid, uint64_t pins);
+uint64_t m6581_iorq(m6581_t* sid, uint64_t pins);
 /* tick a m6581_t instance, returns true when new sample is ready */
-extern bool m6581_tick(m6581_t* sid);
+bool m6581_tick(m6581_t* sid);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -223,11 +242,6 @@ extern bool m6581_tick(m6581_t* sid);
 #define _USE_MATH_DEFINES
 #endif
 #include <math.h>   /* tanh */
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)
@@ -297,7 +311,7 @@ static void _m6581_init_filter(m6581_filter_t* f, int sound_hz) {
     _m6581_set_resonance(f);
 }
 
-void m6581_init(m6581_t* sid, m6581_desc_t* desc) {
+void m6581_init(m6581_t* sid, const m6581_desc_t* desc) {
     CHIPS_ASSERT(sid && desc);
     CHIPS_ASSERT(desc->tick_hz > 0);
     CHIPS_ASSERT(desc->sound_hz > 0);
@@ -326,6 +340,7 @@ void m6581_reset(m6581_t* sid) {
     sid->sample = 0.0f;
     sid->sample_accum = 0.0f;
     sid->sample_accum_count = 1.0f;
+    sid->pins = 0;
 }
 
 /*--- VOICE IMPLEMENTATION ---------------------------------------------------*/
@@ -480,7 +495,7 @@ static inline void _m6581_voice_tick(m6581_t* sid, int voice_index) {
             v->noise_shift = ((s<<1)|new_bit) & 0x007FFFFF;
         }
         /* sync state */
-        v->sync = (v->wav_accum & 0x00800000) &  !(prev_accum & 0x00800000);
+        v->sync = (v->wav_accum & 0x00800000) && !(prev_accum & 0x00800000);
     }
     m6581_voice_t* v_sync = &sid->voice[(voice_index+2)%3];
     uint32_t sm;
@@ -544,7 +559,7 @@ static inline void _m6581_voice_sync(m6581_t* sid, int voice_index) {
     m6581_voice_t* v = &sid->voice[voice_index];
     m6581_voice_t* v_sync = &sid->voice[(voice_index+2)%3];
     if (v->sync && (v_sync->ctrl & M6581_CTRL_SYNC)) {
-        v->wav_accum = 0;
+        v_sync->wav_accum = 0;
     }
 }
 
@@ -780,6 +795,7 @@ uint64_t m6581_iorq(m6581_t* sid, uint64_t pins) {
                     break;
             }
         }
+        sid->pins = pins;
     }
     return pins;
 }

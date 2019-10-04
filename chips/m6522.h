@@ -46,27 +46,23 @@
     some games on the Acorn Atom work (basically just timers, and even those
     or likely not correct). 
 
-    ## MIT License
+    ## zlib/libpng license
 
-    Copyright (c) 2017 Andre Weissflog
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Copyright (c) 2018 Andre Weissflog
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 #*/
 #include <stdint.h>
 #include <stdbool.h>
@@ -166,8 +162,8 @@ typedef struct {
 
 /* m6522 state */
 typedef struct {
-    uint8_t out_b, in_b, ddr_b;
-    uint8_t out_a, in_a, ddr_a;
+    uint8_t out_a, in_a, ddr_a, port_a;
+    uint8_t out_b, in_b, ddr_b, port_b;
     uint8_t acr, pcr;
     uint8_t t1_pb7;         /* timer 1 toggle bit (masked into port B bit 7) */
     uint8_t t1ll, t1lh;     /* timer 1 latch low, high */
@@ -179,23 +175,30 @@ typedef struct {
     m6522_in_t in_cb;
     m6522_out_t out_cb;
     void* user_data;
+    uint64_t pins;          /* last pin value for debug inspection */
 } m6522_t;
 
 /* extract 8-bit data bus from 64-bit pins */
 #define M6522_GET_DATA(p) ((uint8_t)(p>>16))
 /* merge 8-bit data bus value into 64-bit pins */
-#define M6522_SET_DATA(p,d) {p=((p&~0xFF0000)|((d&0xFF)<<16));}
+#define M6522_SET_DATA(p,d) {p=((p&~0xFF0000)|(((d)&0xFF)<<16));}
 /* merge 4-bit address into 64-bit pins */
-#define M6522_SET_ADDR(p,d) {p=((p&~0xF)|(d&0xF));}
+#define M6522_SET_ADDR(p,d) {p=((p&~0xF)|((d)&0xF));}
+/* merge port A pins into pin mask */
+#define M6522_SET_PA(p,a) {p=(p&0xFF00FFFFFFFFFFFFULL)|(((a)&0xFFULL)<<48);}
+/* merge port B pins into pin mask */
+#define M6522_SET_PB(p,b) {p=(p&0x00FFFFFFFFFFFFFFULL)|(((b)&0xFFULL)<<56);}
+/* merge port A and B pins into pin mask */
+#define M6522_SET_PAB(p,a,b) {p=(p&0x0000FFFFFFFFFFFFULL)|(((a)&0xFFULL)<<48)|(((b)&0xFFULL)<<56);}
 
 /* initialize a new 6522 instance */
-extern void m6522_init(m6522_t* m6522, m6522_desc_t* desc);
+void m6522_init(m6522_t* m6522, const m6522_desc_t* desc);
 /* reset an existing 6522 instance */
-extern void m6522_reset(m6522_t* m6522);
+void m6522_reset(m6522_t* m6522);
 /* perform an IO request */
-extern uint64_t m6522_iorq(m6522_t* m6522, uint64_t pins);
+uint64_t m6522_iorq(m6522_t* m6522, uint64_t pins);
 /* tick the m6522 */
-extern void m6522_tick(m6522_t* m6522);
+void m6522_tick(m6522_t* m6522);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -204,11 +207,6 @@ extern void m6522_tick(m6522_t* m6522);
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef CHIPS_IMPL
 #include <string.h>
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)
@@ -219,7 +217,7 @@ extern void m6522_tick(m6522_t* m6522);
 #define _M6522_CHECK_ACR_LATCH_B()        ((m6522->acr & (1<<1)) != 0)
 #define _M6522_CHECK_ACR_LATCH_A()        ((m6522->acr & (1<<0)) != 0)
 
-void m6522_init(m6522_t* m6522, m6522_desc_t* desc) {
+void m6522_init(m6522_t* m6522, const m6522_desc_t* desc) {
     CHIPS_ASSERT(m6522 && desc);
     memset(m6522, 0, sizeof(*m6522));
     m6522->in_cb = desc->in_cb;
@@ -235,8 +233,8 @@ void m6522_init(m6522_t* m6522, m6522_desc_t* desc) {
 */
 void m6522_reset(m6522_t* m6522) {
     CHIPS_ASSERT(m6522);
-    m6522->out_b = m6522->in_b = m6522->ddr_b = 0;
-    m6522->out_a = m6522->in_a = m6522->ddr_a = 0;
+    m6522->out_a = m6522->in_a = m6522->ddr_a = m6522->port_a = 0;
+    m6522->out_b = m6522->in_b = m6522->ddr_b = m6522->port_b = 0;
     m6522->acr = m6522->pcr = 0;
     m6522->t1_pb7 = 0;
     m6522->t1ll = m6522->t1lh = 0;
@@ -246,12 +244,14 @@ void m6522_reset(m6522_t* m6522) {
 static uint8_t _m6522_in_a(m6522_t* m6522) {
     uint8_t data = m6522->in_cb(M6522_PORT_A, m6522->user_data);
     data = (m6522->out_a & m6522->ddr_a) | (data & ~m6522->ddr_a);
+    m6522->port_a = data;
     return data;
 }
 
 static void _m6522_out_a(m6522_t* m6522) {
     /* mask output bits, set input bits to 1 */
     uint8_t data = (m6522->out_a & m6522->ddr_a) | ~m6522->ddr_a;
+    m6522->port_a = data;
     m6522->out_cb(M6522_PORT_A, data, m6522->user_data);
 }
 
@@ -261,6 +261,7 @@ static uint8_t _m6522_in_b(m6522_t* m6522) {
     if (_M6522_CHECK_ACR_T1_PB7()) {
         data = (data & 0x7F) | (m6522->t1_pb7<<7);
     }
+    m6522->port_b = data;
     return data;
 }
 
@@ -271,6 +272,7 @@ static void _m6522_out_b(m6522_t* m6522) {
     if (_M6522_CHECK_ACR_T1_PB7()) {
         data = (data & 0x7F) | (m6522->t1_pb7<<7);
     }
+    m6522->port_b = data;
     m6522->out_cb(M6522_PORT_B, data, m6522->user_data);
 }
 
@@ -475,6 +477,8 @@ uint64_t m6522_iorq(m6522_t* m6522, uint64_t pins) {
             uint8_t data = M6522_GET_DATA(pins);
             _m6522_write(m6522, addr, data);
         }
+        M6522_SET_PAB(pins, m6522->port_a, m6522->port_b);
+        m6522->pins = pins;
     }
     return pins;
 }
@@ -494,6 +498,7 @@ void m6522_tick(m6522_t* m6522) {
     }
     if (_M6522_CHECK_ACR_T1_PB7()) {
         _m6522_out_b(m6522);
+        M6522_SET_PB(m6522->pins, m6522->port_b);
     }
     /* FIXME: interrupt */
     if (m6522->t2-- == 0) {

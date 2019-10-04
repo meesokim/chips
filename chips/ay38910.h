@@ -14,17 +14,17 @@
     EMULATED PINS:
 
              +-----------+
-      BC1 -->|           |<-> DA7
+      BC1 -->|           |<-> DA0
      BDIR -->|           |...
              |           |<-> DA7
              |           |
-             |           |<-> (IOA7)
-             |           |...
              |           |<-> (IOA0)
-             |           |
-             |           |<-> (IOB7)
              |           |...
+             |           |<-> (IOA7)
+             |           |
              |           |<-> (IOB0)
+             |           |...
+             |           |<-> (IOB7)
              +-----------+
 
     NOT EMULATED:
@@ -33,29 +33,23 @@
       a CP1610 CPU
     - the RESET pin state is ignored, instead call ay38910_reset()
 
-    LICENSE:
+    ## zlib/libpng license
 
-    MIT License
-
-    Copyright (c) 2017 Andre Weissflog
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.
+    Copyright (c) 2018 Andre Weissflog
+    This software is provided 'as-is', without any express or implied warranty.
+    In no event will the authors be held liable for any damages arising from the
+    use of this software.
+    Permission is granted to anyone to use this software for any purpose,
+    including commercial applications, and to alter it and redistribute it
+    freely, subject to the following restrictions:
+        1. The origin of this software must not be misrepresented; you must not
+        claim that you wrote the original software. If you use this software in a
+        product, an acknowledgment in the product documentation would be
+        appreciated but is not required.
+        2. Altered source versions must be plainly marked as such, and must not
+        be misrepresented as being the original software.
+        3. This notice may not be removed or altered from any source
+        distribution. 
 */
 #include <stdint.h>
 #include <stdbool.h>
@@ -69,7 +63,7 @@ extern "C" {
 
     Note that the BC2 is not emulated since it is usually always
     set to active when not connected to a CP1610 processor. The
-    remaining BDIR and BC1 pins are interprested as follows:
+    remaining BDIR and BC1 pins are interpreted as follows:
 
     |BDIR|BC1|
     +----+---+
@@ -93,9 +87,27 @@ extern "C" {
 #define AY38910_RESET   (1ULL<<34)
 
 /* chip-specific pins start at position 44 */
-#define AY38910_BDIR    (1ULL<<44)
-#define AY38910_BC1     (1ULL<<45)
-#define AY38910_A8      (1ULL<<46)
+#define AY38910_BDIR    (1ULL<<40)
+#define AY38910_BC1     (1ULL<<41)
+
+/* IO port pins */
+#define AY38910_IOA0    (1ULL<<48)
+#define AY38910_IOA1    (1ULL<<49)
+#define AY38910_IOA2    (1ULL<<50)
+#define AY38910_IOA3    (1ULL<<51)
+#define AY38910_IOA4    (1ULL<<52)
+#define AY38910_IOA5    (1ULL<<53)
+#define AY38910_IOA6    (1ULL<<54)
+#define AY38910_IOA7    (1ULL<<55)
+
+#define AY38910_IOB0    (1ULL<<56)
+#define AY38910_IOB1    (1ULL<<57)
+#define AY38910_IOB2    (1ULL<<58)
+#define AY38910_IOB3    (1ULL<<59)
+#define AY38910_IOB4    (1ULL<<60)
+#define AY38910_IOB5    (1ULL<<61)
+#define AY38910_IOB6    (1ULL<<62)
+#define AY38910_IOB7    (1ULL<<63)
 
 /* AY-3-8910 registers */
 #define AY38910_REG_PERIOD_A_FINE       (0)
@@ -212,6 +224,7 @@ typedef struct {
     ay38910_tone_t tone[AY38910_NUM_CHANNELS];  /* the 3 tone channels */
     ay38910_noise_t noise;                      /* the noise generator state */
     ay38910_env_t env;                          /* the envelope generator state */
+    uint64_t pins;          /* last pin state for debug inspection */
 
     /* sample generation state */
     int sample_period;
@@ -224,15 +237,19 @@ typedef struct {
 #define AY38910_GET_DATA(p) ((uint8_t)(p>>16))
 /* merge 8-bit data bus value into 64-bit pins */
 #define AY38910_SET_DATA(p,d) {p=((p&~0xFF0000)|((d&0xFF)<<16));}
+/* set 8-bit port A data on 64-bit pin mask */
+#define AY38910_SET_PA(p,d) {p=((p&~0x00FF000000000000ULL)|((((uint64_t)d)&0xFFULL)<<48));}
+/* set 8-bit port B data on 64-bit pin mask */
+#define AY38910_SET_PB(p,d) {p=((p&~0xFF00000000000000ULL)|((((uint64_t)d)&0xFFULL)<<56));}
 
 /* initialize a AY-3-8910 instance */
-extern void ay38910_init(ay38910_t* ay, ay38910_desc_t* desc);
+void ay38910_init(ay38910_t* ay, const ay38910_desc_t* desc);
 /* reset an existing AY-3-8910 instance */
-extern void ay38910_reset(ay38910_t* ay);
+void ay38910_reset(ay38910_t* ay);
 /* perform an IO request machine cycle */
-extern uint64_t ay38910_iorq(ay38910_t* ay, uint64_t pins);
+uint64_t ay38910_iorq(ay38910_t* ay, uint64_t pins);
 /* tick the AY-3-8910, return true if a new sample is ready */
-extern bool ay38910_tick(ay38910_t* ay);
+bool ay38910_tick(ay38910_t* ay);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -241,11 +258,6 @@ extern bool ay38910_tick(ay38910_t* ay);
 /*-- IMPLEMENTATION ----------------------------------------------------------*/
 #ifdef CHIPS_IMPL
 #include <string.h>
-#ifndef CHIPS_DEBUG
-    #ifdef _DEBUG
-        #define CHIPS_DEBUG
-    #endif
-#endif
 #ifndef CHIPS_ASSERT
     #include <assert.h>
     #define CHIPS_ASSERT(c) assert(c)
@@ -367,7 +379,7 @@ static void _ay38910_restart_env_shape(ay38910_t* ay) {
     }
 }
 
-void ay38910_init(ay38910_t* ay, ay38910_desc_t* desc) {
+void ay38910_init(ay38910_t* ay, const ay38910_desc_t* desc) {
     CHIPS_ASSERT(ay && desc);
     CHIPS_ASSERT(desc->tick_hz > 0);
     CHIPS_ASSERT(desc->sound_hz > 0);
@@ -556,6 +568,9 @@ uint64_t ay38910_iorq(ay38910_t* ay, uint64_t pins) {
                 AY38910_SET_DATA(pins, data);
             }
         }
+        AY38910_SET_PA(pins, ay->port_a);
+        AY38910_SET_PB(pins, ay->port_b);
+        ay->pins = pins;
     }
     return pins;
 }
