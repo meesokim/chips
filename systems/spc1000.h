@@ -66,6 +66,12 @@ extern "C" {
 #define SPC1K_DEFAULT_AUDIO_SAMPLES (128)    /* default number of samples in internal sample buffer */
 #define SPC1K_MAX_TAPE_SIZE (1<<16)          /* max size of tape file in bytes */
 
+/* SPC-1000 models */
+typedef enum {
+    SPC1000,
+    SPC1000A,
+} spc1000_type_t;
+
 /* joystick emulation types */
 typedef enum {
     SPC1K_JOYSTICKTYPE_NONE,
@@ -84,6 +90,7 @@ typedef void (*spc1000_audio_callback_t)(const float* samples, int num_samples, 
 
 /* configuration parameters for spc1000_init() */
 typedef struct {
+    spc1000_type_t type;
     spc1000_joystick_type_t joystick_type;     /* what joystick type to emulate, default is SPC1K_JOYSTICK_NONE */
 
     /* video output config */
@@ -98,30 +105,30 @@ typedef struct {
     int audio_num_samples;          /* default is ZX_AUDIO_NUM_SAMPLES */
     int audio_sample_rate;          /* playback sample rate, default is 44100 */
     float audio_volume;             /* audio volume: 0.0..1.0, default is 0.25 */
-
+    
     /* ROM images */
-    const void* rom_abasic;
-    const void* rom_afloat;
-    const void* rom_dosrom;
-    int rom_abasic_size;
-    int rom_afloat_size;
-    int rom_dosrom_size;
+    const void* rom_spc1000;
+    int rom_spc1000_size;
 } spc1000_desc_t;
 
 /* Acorn spc1000 emulation state */
 typedef struct {
-    m6502_t cpu;
+    z80_t cpu;    
     mc6847_t vdg;
     ay38910_t ay;
     beeper_t beeper;
     bool valid;
     bool out_cass0;
     bool out_cass1;
+    spc1000_type_t type;
     spc1000_joystick_type_t joystick_type;
     uint8_t kbd_joymask;        /* joystick mask from keyboard-joystick-emulation */
     uint8_t joy_joymask;        /* joystick mask from calls to spc1000_joystick() */
     uint8_t mmc_cmd;
     uint8_t mmc_latch;
+    uint8_t gmode;
+    uint8_t iplk;
+    uint32_t tick_count;
     clk_t clk;
     mem_t mem;
     kbd_t kbd;
@@ -169,6 +176,8 @@ void spc1000_joystick(spc1000_t* sys, uint8_t mask);
 bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes);
 /* remove tape */
 void spc1000_remove_tape(spc1000_t* sys);
+/* load a ZX Z80 file into the emulator */
+bool spc1000_quickload(spc1000_t* sys, const uint8_t* ptr, int num_bytes); 
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -184,7 +193,7 @@ void spc1000_remove_tape(spc1000_t* sys);
 
 #define _SPC1K_FREQUENCY (4000000)
 
-static uint64_t _spc1000_tick(uint64_t pins, void* user_data);
+static uint64_t _spc1000_tick(int num, uint64_t pins, void* user_data);
 static uint64_t _spc1000_vdg_fetch(uint64_t pins, void* user_data);
 static void _spc1000_init_keymap(spc1000_t* sys);
 static void _spc1000_init_memorymap(spc1000_t* sys);
@@ -204,21 +213,21 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
     sys->audio_cb = desc->audio_cb;
     sys->num_samples = _SPC1K_DEFAULT(desc->audio_num_samples, SPC1K_DEFAULT_AUDIO_SAMPLES);
     CHIPS_ASSERT(sys->num_samples <= SPC1K_MAX_AUDIO_SAMPLES);
-    CHIPS_ASSERT(desc->rom && (desc->rom_size == sizeof(sys->rom)));
-    memcpy(sys->rom, desc->rom, sizeof(sys->rom));
+    CHIPS_ASSERT(desc->rom_spc1000 && (desc->rom_spc1000_size == sizeof(sys->rom)));
+    memcpy(sys->rom, desc->rom_spc1000, sizeof(sys->rom));
 
     /* initialize the hardware */
     clk_init(&sys->clk, _SPC1K_FREQUENCY);
 
-    m6502_desc_t cpu_desc;
+    z80_desc_t cpu_desc;
     _SPC1K_CLEAR(cpu_desc);
     cpu_desc.tick_cb = _spc1000_tick;
     cpu_desc.user_data = sys;
-    m6502_init(&sys->cpu, &cpu_desc);
+    z80_init(&sys->cpu, &cpu_desc);
 
     mc6847_desc_t vdg_desc;
     _SPC1K_CLEAR(vdg_desc);
-    vdg_desc.tick_hz = _SPC1K_FREQUENCY;
+    vdg_desc.tick_hz = 3579545;
     vdg_desc.rgba8_buffer = (uint32_t*) desc->pixel_buffer;
     vdg_desc.rgba8_buffer_size = desc->pixel_buffer_size;
     vdg_desc.fetch_cb = _spc1000_vdg_fetch;
@@ -231,11 +240,11 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
 
     /* Sound AY-3-8910 state */
     ay38910_desc_t ay_desc;
-    _ZX_CLEAR(ay_desc);
+    _SPC1K_CLEAR(ay_desc);
     ay_desc.type = AY38910_TYPE_8912;
-    ay_desc.tick_hz = cpu_freq / 2;
+    ay_desc.tick_hz = _SPC1K_FREQUENCY / 2;
     ay_desc.sound_hz = audio_hz;
-    ay_desc.magnitude = _ZX_DEFAULT(desc->audio_ay_volume, 0.5f);
+    ay_desc.magnitude = _SPC1K_DEFAULT(desc->audio_volume, 0.5f);
     ay38910_init(&sys->ay, &ay_desc); 
     
     /* setup memory map and keyboard matrix */
@@ -275,10 +284,10 @@ int spc1000_display_height(spc1000_t* sys) {
 
 void spc1000_reset(spc1000_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
-    m6502_reset(&sys->cpu);
+    z80_reset(&sys->cpu);
     mc6847_reset(&sys->vdg);
     beeper_reset(&sys->beeper);
-    _spc1000_init_memory_map(sys);
+    _spc1000_init_memorymap(sys);
     z80_set_pc(&sys->cpu, 0x0000);
 }
 
@@ -344,234 +353,137 @@ void spc1000_joystick(spc1000_t* sys, uint8_t mask) {
 }
 
 /* CPU tick callback */
-uint64_t _spc1000_tick(uint64_t pins, void* user_data) {
+static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
     spc1000_t* sys = (spc1000_t*) user_data;
 
     /* tick the video chip */
     mc6847_tick(&sys->vdg);
 
-    /* update beeper */
-    if (beeper_tick(&sys->beeper)) {
-        /* new audio sample ready */
-        sys->sample_buffer[sys->sample_pos++] = sys->beeper.sample;
-        if (sys->sample_pos == sys->num_samples) {
-            if (sys->audio_cb) {
-                sys->audio_cb(sys->sample_buffer, sys->num_samples, sys->user_data);
-            }
-            sys->sample_pos = 0;
+    /* tick audio systems */
+    for (int i = 0; i < num_ticks; i++) {
+        sys->tick_count++;
+        bool sample_ready = beeper_tick(&sys->beeper);
+        /* the AY-3-8912 chip runs at half CPU frequency */
+        if (sys->tick_count & 1) {
+            ay38910_tick(&sys->ay);
         }
-    }
+        if (sample_ready) {
+            float sample = sys->beeper.sample;
+            sample += sys->ay.sample;
+            sys->sample_buffer[sys->sample_pos++] = sample;
+            if (sys->sample_pos == sys->num_samples) {
+                if (sys->audio_cb) {
+                    sys->audio_cb(sys->sample_buffer, sys->num_samples, sys->user_data);
+                }
+                sys->sample_pos = 0;
+            }
+        }
+    }    
 
     /* memory and IO requests */
-    if (pins & Z80_MREQ) {
+    if (pins & Z80_MREQ) 
+    {
         const uint16_t addr = Z80_GET_ADDR(pins);
+		uint8_t data = Z80_GET_DATA(pins);
         if (pins & Z80_RD) {
-            Z80_SET_DATA(pins, mem_rd(&sys->mem, addr));
+            Z80_SET_DATA(pins, &sys->iplk ? sys->rom[addr&0x7fff] : sys->ram[addr]);
         }
         else if (pins & Z80_WR) {
-            mem_wr(&sys->mem, addr, Z80_GET_DATA(pins));
+            sys->ram[addr] = Z80_GET_DATA(pins);
         }
     }
-    else if (pins & Z80_IORQ) {
-        const uint16_t addr = Z80_GET_ADDR(pins);
+    else if (pins & Z80_IORQ) 
+    {
+        const uint16_t Port = Z80_GET_ADDR(pins);
         if (pins & Z80_RD) {
-            if (addr >= 0x8000 && addr <= 0x8009) {
-                Z80_SET_DATA(pins, &sys->keyMatrix[addr - 0x8009]);
+            if (Port >= 0x8000 && Port <= 0x8009) {
+               // Z80_SET_DATA(pins, &sys->keyMatrix[Port - 0x8009]);
             }
-            else if ((addr & 0xe000) == 0xa000)
+            else if ((Port & 0xe000) == 0x2000)
             {
-                &sys->iplk != &sys->iplk;
+                Z80_SET_DATA(pins, sys->gmode);
             }
-            else if ((addr & 0xe000) == 0x2000)
+            else if ((Port & 0xe000) == 0)
             {
-                Z80_SET_DATA(pins, &sys->gmode);
+                Z80_SET_DATA(pins, sys->vram[Port & 0x1fff]);
             }
-            else if ((addr & 0xe000) == 0)
+            else if ((Port & 0xFFFE) == 0x4000)
             {
-                Z80_SET_DATA(pins, &sys->vram[addr & 0x1fff]);
+                /* read from AY-3-8912 (11............0.) */
+                pins = ay38910_iorq(&sys->ay, AY38910_BC1|pins) & Z80_PIN_MASK;
             }
+            else if ((Port & 0xe000) == 0xa000)
+            {
+                sys->iplk = !sys->iplk;
+            }
+			else
+				Z80_SET_DATA(pins, 0xff);
         }
         else if (pins & Z80_WR) {
             // an IO write
             const uint8_t data = Z80_GET_DATA(pins);
-            if ((pins & Z80_A0) == 0) {
-                /* Spectrum ULA (...............0)
-                    "every even IO port addresses the ULA but to avoid
-                    problems with other I/O devices, only FE should be used"
-                    FIXME:
-                        bit 3: MIC output (CAS SAVE, 0=On, 1=Off)
-                */
-                sys->border_color = _zx_palette[data & 7] & 0xFFD7D7D7;
-                sys->last_fe_out = data;
-                beeper_set(&sys->beeper, 0 != (data & (1<<4)));
+            const uint16_t Port = Z80_GET_ADDR(pins);            
+            if (Port < 0x2000) 
+            {
+                sys->vram[Port] = data;
             }
-            else if (sys->type == ZX_TYPE_128) {
-                /* Spectrum 128 memory control (0.............0.)
-                    http://8bit.yarek.pl/computer/zx.128/
-                */
-                if ((pins & (Z80_A15|Z80_A1)) == 0) {
-                    if (!sys->memory_paging_disabled) {
-                        sys->last_mem_config = data;
-                        /* bit 3 defines the video scanout memory bank (5 or 7) */
-                        sys->display_ram_bank = (data & (1<<3)) ? 7 : 5;
-                        /* only last memory bank is mappable */
-                        mem_map_ram(&sys->mem, 0, 0xC000, 0x4000, sys->ram[data & 0x7]);
-
-                        /* ROM0 or ROM1 */
-                        if (data & (1<<4)) {
-                            /* bit 4 set: ROM1 */
-                            mem_map_rom(&sys->mem, 0, 0x0000, 0x4000, sys->rom[1]);
-                        }
-                        else {
-                            /* bit 4 clear: ROM0 */
-                            mem_map_rom(&sys->mem, 0, 0x0000, 0x4000, sys->rom[0]);
-                        }
-                    }
-                    if (data & (1<<5)) {
-                        /* bit 5 prevents further changes to memory pages
-                            until computer is reset, this is used when switching
-                            to the 48k ROM
-                        */
-                        sys->memory_paging_disabled = true;
-                    }
-                }
-                else if ((pins & (Z80_A15|Z80_A14|Z80_A1)) == (Z80_A15|Z80_A14)) {
-                    /* select AY-3-8912 register (11............0.) */
-                    ay38910_iorq(&sys->ay, AY38910_BDIR|AY38910_BC1|pins);
-                }
-                else if ((pins & (Z80_A15|Z80_A14|Z80_A1)) == Z80_A15) {
-                    /* write to AY-3-8912 (10............0.) */
-                    ay38910_iorq(&sys->ay, AY38910_BDIR|pins);
-                }
+            else if ((Port & 0xe000) == 0xa000)
+            {
+                sys->iplk = !sys->iplk;
+            }
+            else if ((Port & 0xE000) == 0x2000)	// GMODE setting
+            {
+#define CHECK(a, b, c) a & b ? c : 0                
+                uint64_t vdg_pins = CHECK(data, 2, MC6847_GM0) | CHECK(data, 1, MC6847_GM1) | CHECK(data, 3, MC6847_AG) | CHECK(data, 7, MC6847_CSS) | MC6847_GM2;
+                uint64_t vdg_mask = MC6847_AG|MC6847_GM0|MC6847_GM0|MC6847_GM1|MC6847_CSS|MC6847_GM2;
+                mc6847_ctrl(&sys->vdg, vdg_pins, vdg_mask);
+				sys->gmode = data;
+            }
+            else if ((Port & 0xFFFF) == 0x4000) // PSG
+            {
+                /* select AY-3-8912 register (11............0.) */
+                ay38910_iorq(&sys->ay, AY38910_BDIR|AY38910_BC1|pins);
+            } else if ((Port & 0xFFFF) == 0x4001) // PSG Write
+            {
+                /* write to AY-3-8912 (10............0.) */
+                ay38910_iorq(&sys->ay, AY38910_BDIR|pins);
             }
         }
     }
     return pins;
 }
+
+#define ATTR_INV 0x1 // white
+#define ATTR_CSS 0x2 // cyan blue
+#define ATTR_SEM 0x4
+#define ATTR_EXT 0x8
 
 uint64_t _spc1000_vdg_fetch(uint64_t pins, void* user_data) {
     spc1000_t* sys = (spc1000_t*) user_data;
     const uint16_t addr = MC6847_GET_ADDR(pins);
-    uint8_t data = sys->ram[(addr + 0x8000) & 0xFFFF];
+    uint8_t data = sys->vram[(addr & 0x1fff)];
     MC6847_SET_DATA(pins, data);
-
-    /*  the upper 2 databus bits are directly wired to MC6847 pins:
-        bit 7 -> INV pin (in text mode, invert pixel pattern)
-        bit 6 -> A/S and INT/EXT pin, A/S actives semigraphics mode
-                 and INT/EXT selects the 2x3 semigraphics pattern
-                 (so 4x4 semigraphics isn't possible)
-    */
-    if (data & (1<<7)) { pins |= MC6847_INV; }
-    else               { pins &= ~MC6847_INV; }
-    if (data & (1<<6)) { pins |= (MC6847_AS|MC6847_INTEXT); }
-    else               { pins &= ~(MC6847_AS|MC6847_INTEXT); }
-    return pins;
-}
-
-uint64_t _spc1000_ppi_out(int port_id, uint64_t pins, uint8_t data, void* user_data) {
-    spc1000_t* sys = (spc1000_t*) user_data;
-    /*
-        FROM spc1000 Theory and Praxis (and MAME)
-        The  8255  Programmable  Peripheral  Interface  Adapter  contains  three
-        8-bit ports, and all but one of these lines is used by the SPC1K.
-        Port A - #B000
-               Output bits:      Function:
-                    O -- 3     Keyboard column
-                    4 -- 7     Graphics mode (4: A/G, 5..7: GM0..2)
-        Port B - #B001
-               Input bits:       Function:
-                    O -- 5     Keyboard row
-                      6        CTRL key (low when pressed)
-                      7        SHIFT keys {low when pressed)
-        Port C - #B002
-               Output bits:      Function:
-                    O          Tape output
-                    1          Enable 2.4 kHz to cassette output
-                    2          Loudspeaker
-                    3          Not used (??? see below)
-               Input bits:       Function:
-                    4          2.4 kHz input
-                    5          Cassette input
-                    6          REPT key (low when pressed)
-                    7          60 Hz sync signal (low during flyback)
-        The port C output lines, bits O to 3, may be used for user
-        applications when the cassette interface is not being used.
-    */
-    if (I8255_PORT_A == port_id) {
-        /* PPI port A
-            0..3:   keyboard matrix column to scan next
-            4:      MC6847 A/G
-            5:      MC6847 GM0
-            6:      MC6847 GM1
-            7:      MC6847 GM2
-        */
-        kbd_set_active_columns(&sys->kbd, 1<<(data & 0x0F));
-        uint64_t vdg_pins = 0;
-        uint64_t vdg_mask = MC6847_AG|MC6847_GM0|MC6847_GM1|MC6847_GM2;
-        if (data & (1<<4)) { vdg_pins |= MC6847_AG; }
-        if (data & (1<<5)) { vdg_pins |= MC6847_GM0; }
-        if (data & (1<<6)) { vdg_pins |= MC6847_GM1; }
-        if (data & (1<<7)) { vdg_pins |= MC6847_GM2; }
-        mc6847_ctrl(&sys->vdg, vdg_pins, vdg_mask);
-    }
-    else if (I8255_PORT_C == port_id) {
-        /* PPI port C output:
-            0:  output: cass 0
-            1:  output: cass 1
-            2:  output: speaker
-            3:  output: MC6847 CSS
-
-            NOTE: only the MC6847 CSS pin is emulated here
-        */
-        sys->out_cass0 = 0 == (data & (1<<0));
-        sys->out_cass1 = 0 == (data & (1<<1));
-        beeper_set(&sys->beeper, 0 == (data & (1<<2)));
-        uint64_t vdg_pins = 0;
-        uint64_t vdg_mask = MC6847_CSS;
-        if (data & (1<<3)) {
-            vdg_pins |= MC6847_CSS;
-        }
-        mc6847_ctrl(&sys->vdg, vdg_pins, vdg_mask);
+    if (!(pins & MC6847_AG) && addr < 0x800) // character mode
+    {
+        uint8_t attr = sys->vram[addr + 0x800];
+        if (attr & ATTR_CSS)
+            pins |= MC6847_CSS;
+        else
+            pins &= ~MC6847_CSS;
+        if (attr & ATTR_INV)
+            pins |= MC6847_INV;
+        else
+            pins &= ~MC6847_INV;
+        if (attr & ATTR_EXT)
+            pins |= MC6847_INTEXT;
+        else
+            pins &= ~MC6847_INTEXT;
+        if (attr & ATTR_SEM)
+            pins |= MC6847_AS;
+        else
+            pins &= ~MC6847_AS;
     }
     return pins;
-}
-
-uint8_t _spc1000_ppi_in(int port_id, void* user_data) {
-    spc1000_t* sys = (spc1000_t*) user_data;
-    uint8_t data = 0;
-    if (I8255_PORT_B == port_id) {
-        /* keyboard row state */
-        data = ~kbd_scan_lines(&sys->kbd);
-    }
-    else if (I8255_PORT_C == port_id) {
-        /*  PPI port C input:
-            4:  input: 2400 Hz
-            5:  input: cassette
-            6:  input: keyboard repeat
-            7:  input: MC6847 FSYNC
-
-            NOTE: only the 2400 Hz oscillator and FSYNC pins is emulated here
-        */
-        if (sys->state_2_4khz) {
-            data |= (1<<4);
-        }
-        /* FIXME: always send REPEAT key as 'not pressed' */
-        data |= (1<<6);
-        /* vblank pin (cleared during vblank) */
-        if (0 == (sys->vdg.pins & MC6847_FS)) {
-            data |= (1<<7);
-        }
-    }
-    return data;
-}
-
-static void _spc1000_via_out(int port_id, uint8_t data, void* user_data) {
-    /* FIXME */
-}
-
-static uint8_t _spc1000_via_in(int port_id, void* user_data) {
-    /* FIXME */
-    return 0x00;
 }
 
 static void _spc1000_init_keymap(spc1000_t* sys) {
@@ -637,15 +549,10 @@ static void _spc1000_init_memorymap(spc1000_t* sys) {
         sys->ram[i++] = (r>>16);
         sys->ram[i++] = (r>>24);
     }
-    /* 32 KB RAM (with RAM extension) + 8 KB vidmem */
-    mem_map_ram(&sys->mem, 0, 0x0000, 0xA000, sys->ram);
-    /* hole in 0xA000 to 0xAFFF (for utility ROMs) */
-    /* 0xB000 to 0xBFFF: IO area, not mapped */
-    /* 16 KB ROMs from 0xC000 */
-    mem_map_rom(&sys->mem, 0, 0xC000, 0x1000, sys->rom_abasic);
-    mem_map_rom(&sys->mem, 0, 0xD000, 0x1000, sys->rom_afloat);
-    mem_map_rom(&sys->mem, 0, 0xE000, 0x1000, sys->rom_dosrom);
-    mem_map_rom(&sys->mem, 0, 0xF000, 0x1000, sys->rom_abasic + 0x1000);
+    /* 64 KB RAM */
+    mem_map_ram(&sys->mem, 0, 0x0000, 0x10000, sys->ram);
+    /* 32 KB ROMs from 0x000 */
+    //mem_map_rom(&sys->mem, 1, 0x0000, 0x8000, sys->rom);
 }
 
 /*=== FILE LOADING ===========================================================*/
@@ -656,11 +563,6 @@ typedef struct {
     uint16_t exec_addr;
     uint16_t length;
 } _spc1000_tap_header;
-
-/* trap the OSLOAD function (http://ladybug.xs4all.nl/arlet/fpga/6502/kernel.dis) */
-static int _spc1000_trap_cb(uint16_t pc, int ticks, uint64_t pins, void* user_data) {
-    return (pc == 0xF96E) ? 1 : 0;
-}
 
 bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
     CHIPS_ASSERT(sys && sys->valid);
@@ -673,7 +575,6 @@ bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
     memcpy(sys->tape_buf, ptr, num_bytes);
     sys->tape_pos = 0;
     sys->tape_size = num_bytes;
-    m6502_trap_cb(&sys->cpu, _spc1000_trap_cb, sys);
     return true;
 }
 
@@ -681,7 +582,6 @@ void spc1000_remove_tape(spc1000_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
     sys->tape_pos = 0;
     sys->tape_size = 0;
-    m6502_trap_cb(&sys->cpu, 0, 0);
 }
 
 /*
@@ -751,30 +651,10 @@ void _spc1000_osload(spc1000_t* sys) {
     if (sys->tape_pos >= sys->tape_size) {
         spc1000_remove_tape(sys);
     }
-    /* success/fail: set or clear bit 6 and clear bit 7 of 0xDD */
-    uint8_t dd = mem_rd(&sys->mem, 0xDD);
-    if (success) {
-        dd |= (1<<6);
-    }
-    else {
-        dd &= ~(1<<6);
-    }
-    dd &= ~(1<<7);
-    mem_wr(&sys->mem, 0xDD, dd);
+}
 
-    /* execute RTS */
-    sys->cpu.state.S++;
-    uint8_t l = mem_rd(&sys->mem, 0x0100|sys->cpu.state.S++);
-    uint8_t h = mem_rd(&sys->mem, 0x0100|sys->cpu.state.S);
-    if (success) {
-        /* jump to start of loaded code */
-        sys->cpu.state.PC = exec_addr;
-    }
-    else {
-        /* on error, just execute the RTS */
-        sys->cpu.state.PC = (h<<8)|l;
-        sys->cpu.state.PC++;
-    }
+bool spc1000_quickload(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
+    return true;
 }
 
 #endif /* CHIPS_IMPL */

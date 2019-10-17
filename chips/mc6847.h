@@ -271,7 +271,7 @@ void mc6847_init(mc6847_t* vdg, const mc6847_desc_t* desc) {
     CHIPS_ASSERT(desc->rgba8_buffer);
     CHIPS_ASSERT(desc->rgba8_buffer_size >= (MC6847_DISPLAY_WIDTH*MC6847_DISPLAY_HEIGHT*sizeof(uint32_t)));
     CHIPS_ASSERT(desc->fetch_cb);
-    CHIPS_ASSERT((desc->tick_hz > 0) && (desc->tick_hz < MC6847_TICK_HZ));
+    CHIPS_ASSERT((desc->tick_hz > 0) && (desc->tick_hz <= MC6847_TICK_HZ));
 
     memset(vdg, 0, sizeof(*vdg));
     vdg->rgba8_buffer = desc->rgba8_buffer;
@@ -563,7 +563,26 @@ static uint64_t _mc6847_decode_scanline(mc6847_t* vdg, uint64_t pins, int y) {
                 /*  alphanumeric mode
                     FIXME: INT_EXT (switch between internal and external font
                 */
-                uint8_t m = _mc6847_font[(chr&0x3F)*12 + chr_y];
+                uint8_t m;
+                int ch = chr;
+				if (pins & MC6847_INTEXT)
+				{
+#if 1                    
+					ch = chr < 96 ? chr + 128 : chr;
+					if (ch >= 96 && ch < 128)
+					{
+						MC6847_SET_ADDR(pins, (0x1600 + (ch - 96) * 16 + chr_y));
+					} 
+					else if (ch >= 128 && ch < 224)
+					{
+						MC6847_SET_ADDR(pins, 0x1000 + (ch - 128) * 16 + chr_y);
+					}
+                    pins = vdg->fetch_cb(pins, ud);
+                    m = MC6847_GET_DATA(pins);                    
+#endif                    
+                } else {
+                    m = _mc6847_font[(chr-32)*12 + chr_y];
+                }
                 if (pins & MC6847_INV) {
                     m = ~m;
                 }

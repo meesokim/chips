@@ -1102,7 +1102,7 @@ uint64_t m6569_tick(m6569_t* vic, uint64_t pins) {
             ( see 3.5 http://www.zimmers.net/cbmpics/cbm/c64/vic-ii.txt )
             
             "A Bad Line Condition is given at any arbitrary clock cycle, if at the
-            negative edge of �0 at the beginning of the cycle RASTER >= $30 (48) and RASTER
+            negative edge of ?0 at the beginning of the cycle RASTER >= $30 (48) and RASTER
             <= $f7 (247) and the lower three bits of RASTER are equal to YSCROLL and if the
             DEN bit was set during an arbitrary cycle of raster line $30."
         */

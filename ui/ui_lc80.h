@@ -224,7 +224,7 @@ static void _ui_lc80_draw_vqe23_segments(ImDrawList* l, const ImVec2& p, uint8_t
 }
 
 static ImVec2 _ui_lc80_draw_vqe23(ImDrawList* l, ImVec2 pos, uint16_t segs, const _ui_lc80_mb_config& conf) {
-    const float dx = conf.display.segment_length * 0.5 + conf.display.digit_padding;
+    const float dx = conf.display.segment_length * (float)0.5 + conf.display.digit_padding;
     const float w = 2 * conf.display.segment_length + 4 * conf.display.digit_padding;
     const float h = 2 * conf.display.segment_length + 2 * conf.display.digit_padding;
     ImVec2 p0(pos.x - w * 0.5f, pos.y - h * 0.5f);
@@ -476,15 +476,15 @@ static void _ui_lc80_draw_data_bus(ui_lc80_t* ui, const _ui_lc80_mb_config& c) {
     auto& mb = ui->mb;
     for (int i = 0; i < 8; i++) {
         ImU32 color = (ui->sys->cpu.pins & (Z80_D0<<i)) ? 0xFF00FF00 : 0xFF008800;
-        _ui_lc80_draw_wire(&mb.cpu, &mb.ctc,     Z80_D0<<i, Z80_D0<<i,       -60+i*2, -1,      -60+i*2, color);
-        _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, Z80_D0<<i, Z80_D0<<i,       -60+i*2, 360+i*2, -60+i*2, color);
-        _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, Z80_D0<<i, Z80_D0<<i,       -60+i*2, 360+i*2, -60+i*2, color);
-        _ui_lc80_draw_wire(&mb.cpu, &mb.u505,    Z80_D0<<i, LC80_U505_D0<<i, -60+i*2, 360+i*2,  10+i*2, color);
+        _ui_lc80_draw_wire(&mb.cpu, &mb.ctc,     Z80_D0<<i, Z80_D0<<i,       (float)(-60+i*2), (float)-1,      (float)(-60+i*2), color);
+        _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, Z80_D0<<i, Z80_D0<<i,       (float)(-60+i*2), (float)(360+i*2), (float)(-60+i*2), color);
+        _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, Z80_D0<<i, Z80_D0<<i,       (float)(-60+i*2), (float)(360+i*2), (float)(-60+i*2), color);
+        _ui_lc80_draw_wire(&mb.cpu, &mb.u505,    Z80_D0<<i, LC80_U505_D0<<i, (float)(-60+i*2), (float)(360+i*2), (float)( 10+i*2), color);
         if (i < 4) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[0], Z80_D0<<i, LC80_U214_D0<<i, -60+i*2, 360+i*2, 10+i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[0], Z80_D0<<i, LC80_U214_D0<<i, (float)(-60+i*2), (float)(360+i*2), (float)(10+i*2), color);
         }
         else {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[1], Z80_D0<<i, LC80_U214_D0<<(i-4), -60+i*2, 360+i*2, 10+(i-4)*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[1], Z80_D0<<i, LC80_U214_D0<<(i-4), (float)(-60+i*2), (float)(360+i*2), (float)(10+(i-4)*2), color);
         }
     }
 }
@@ -495,44 +495,44 @@ static void _ui_lc80_draw_addr_bus(ui_lc80_t* ui, const _ui_lc80_mb_config& c) {
         ImU32 color = (ui->sys->cpu.pins & (Z80_A0<<i)) ? 0xFF0000FF : 0xFF000088;
         ImU32 sel_color = (ui->sys->cpu.pins & (Z80_A0<<i)) ? 0xFFFFFF00 : 0xFF888800;
         if (i < 11) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.u505, Z80_A0<<i, LC80_U505_A0<<i, 10+i*2, 80+i*2, -10-i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.u505, (uint64_t)Z80_A0<<i, (uint64_t)LC80_U505_A0<<i, (float)(10+i*2), (float)(80+i*2), (float)(-10-i*2), color);
         }
         if (i < 10) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[0], Z80_A0<<i, LC80_U214_A0<<i, 10+i*2, 80+i*2, -10-i*2, color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[1], Z80_A0<<i, LC80_U214_A0<<i, 10+i*2, 80+i*2, -10-i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[0], (uint64_t)Z80_A0<<i, (uint64_t)LC80_U214_A0<<i, (float)(10+i*2), (float)(80+i*2), (float)(-10-i*2), color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.u214[1], (uint64_t)Z80_A0<<i, (uint64_t)LC80_U214_A0<<i, (float)(10+i*2), (float)(80+i*2), (float)(-10-i*2), color);
         }
         if (i == 0) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, Z80_A0<<i, Z80PIO_BASEL, 60+i*4, 340+i*4, -36, sel_color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, Z80_A0<<i, Z80PIO_BASEL, 60+i*4, 340+i*4, -36, sel_color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ctc,     Z80_A0<<i, Z80CTC_CS0,   60+i*4, 340+i*4, -36, sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, (uint64_t)Z80_A0<<i, (uint64_t)Z80PIO_BASEL, (float)(60+i*4), (float)(340+i*4), (float)(-36), sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, (uint64_t)Z80_A0<<i, (uint64_t)Z80PIO_BASEL, (float)(60+i*4), (float)(340+i*4), (float)(-36), sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ctc,     (uint64_t)Z80_A0<<i, (uint64_t)Z80CTC_CS0,   (float)(60+i*4), (float)(340+i*4), (float)(-36), sel_color);
         }
         if (i == 1) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, Z80_A0<<i, Z80PIO_CDSEL, 60+i*4, 340+i*4, -40, sel_color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, Z80_A0<<i, Z80PIO_CDSEL, 60+i*4, 340+i*4, -40, sel_color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ctc,     Z80_A0<<i, Z80CTC_CS1,   60+i*4, 340+i*4, -40, sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, (uint64_t)Z80_A0<<i, (uint64_t)Z80PIO_CDSEL, (float)(60+i*4), (float)(340+i*4), (float)(-40), sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, (uint64_t)Z80_A0<<i, (uint64_t)Z80PIO_CDSEL, (float)(60+i*4), (float)(340+i*4), (float)(-40), sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ctc,     (uint64_t)Z80_A0<<i, (uint64_t)Z80CTC_CS1,   (float)(60+i*4), (float)(340+i*4), (float)(-40), sel_color);
         }
         if (i == 2) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, Z80_A0<<i, Z80PIO_CE, 60+i*4, 340+i*4, -32, sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_usr, Z80_A0<<i, Z80PIO_CE, (float)(60+i*4), (float)(340+i*4), (float)(-32), sel_color);
         }
         if (i == 3) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, Z80_A0<<i, Z80PIO_CE, 60+i*4, 340+i*4, -32, sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.pio_sys, Z80_A0<<i, Z80PIO_CE, (float)(60+i*4), (float)(340+i*4), (float)(-32), sel_color);
         }
         if (i == 4) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ctc, Z80_A0<<i, Z80CTC_CE, 60+i*4, 340+i*4, -32, sel_color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ctc, Z80_A0<<i, Z80CTC_CE, (float)(60+i*4), (float)(340+i*4), (float)(-32), sel_color);
         }
         if (i == 10) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[1], Z80_A10, LC80_DS8205_A,   18+i*2, 200+i*2, -10-i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[1], Z80_A10, LC80_DS8205_A,   (float)(18+i*2), (float)(200+i*2), (float)(-10-i*2), color);
         }
         if (i == 11) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[0], Z80_A11, LC80_DS8205_A,   18+i*2, 200+i*2, -10-i*2, color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[1], Z80_A11, LC80_DS8205_B,   18+i*2, 200+i*2, -10-i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[0], Z80_A11, LC80_DS8205_A,   (float)(18+i*2), (float)(200+i*2), (float)(-10-i*2), color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[1], Z80_A11, LC80_DS8205_B,   (float)(18+i*2), (float)(200+i*2), (float)(-10-i*2), color);
         }
         if (i == 12) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[0], Z80_A12, LC80_DS8205_B,   18+i*2, 200+i*2, -10-i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[0], Z80_A12, LC80_DS8205_B,   (float)(18+i*2), (float)(200+i*2), (float)(-10-i*2), color);
         }
         if (i == 13) {
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[0], Z80_A13, LC80_DS8205_G1,  18+i*2, 200+i*2, -10-i*2, color);
-            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[1], Z80_A13, LC80_DS8205_G2B, 18+i*2, 200+i*2, -10-i*2, color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[0], Z80_A13, LC80_DS8205_G1,  (float)(18+i*2), (float)(200+i*2), (float)(-10-i*2), color);
+            _ui_lc80_draw_wire(&mb.cpu, &mb.ds8205[1], Z80_A13, LC80_DS8205_G2B, (float)(18+i*2), (float)(200+i*2), (float)(-10-i*2), color);
         }
     }
 }
@@ -541,12 +541,12 @@ static void _ui_lc80_draw_chip_select(ui_lc80_t* ui, const _ui_lc80_mb_config& c
     auto& mb = ui->mb;
     {
         ImU32 color = (ui->sys->ds8205[0] & LC80_DS8205_Y4) ? 0xFFFFFF00 : 0xFF888800;
-        _ui_lc80_draw_wire(&mb.ds8205[0], &mb.u505, LC80_DS8205_Y4, LC80_U505_CS, 10, 108, 10, color);
+        _ui_lc80_draw_wire(&mb.ds8205[0], &mb.u505, LC80_DS8205_Y4, LC80_U505_CS, (float)(10), (float)(108), (float)(10), color);
     }
     {
         ImU32 color = (ui->sys->ds8205[1] & LC80_DS8205_Y4) ? 0xFFFFFF00 : 0xFF888800;
-        _ui_lc80_draw_wire(&mb.ds8205[1], &mb.u214[0], LC80_DS8205_Y4, LC80_U214_CS, 14, 112, 10, color);
-        _ui_lc80_draw_wire(&mb.ds8205[1], &mb.u214[1], LC80_DS8205_Y4, LC80_U214_CS, 14, 112, 10, color);
+        _ui_lc80_draw_wire(&mb.ds8205[1], &mb.u214[0], LC80_DS8205_Y4, LC80_U214_CS, (float)(14), (float)(112), (float)(10), color);
+        _ui_lc80_draw_wire(&mb.ds8205[1], &mb.u214[1], LC80_DS8205_Y4, LC80_U214_CS, (float)(14), (float)(112), (float)(10), color);
     }
 }
 
@@ -800,10 +800,10 @@ static const ui_chip_pin_t _ui_lc80_ds8205_pins[] = {
 };
 
 static void _ui_lc80_config_chip_desc(ui_chip_desc_t* desc, float width) {
-    desc->pin_slot_height = 10.0f;
-    desc->pin_width = 8.0f;
-    desc->pin_height = 8.0f;
-    desc->chip_width = width;
+    desc->pin_slot_height = 10;
+    desc->pin_width = 8;
+    desc->pin_height = 8;
+    desc->chip_width = (int) width;
     desc->pin_names_inside = true;
     desc->name_outside = true;
 }
