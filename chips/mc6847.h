@@ -563,12 +563,11 @@ static uint64_t _mc6847_decode_scanline(mc6847_t* vdg, uint64_t pins, int y) {
                 /*  alphanumeric mode
                     FIXME: INT_EXT (switch between internal and external font
                 */
-                uint8_t m;
-                int ch = chr;
+                uint8_t m = _mc6847_font[(chr&0x3F)*12 + chr_y];
+#if 1                    
 				if (pins & MC6847_INTEXT)
 				{
-#if 1                    
-					ch = chr < 96 ? chr + 128 : chr;
+					uint8_t ch = chr < 96 ? chr + 128 : chr;
 					if (ch >= 96 && ch < 128)
 					{
 						MC6847_SET_ADDR(pins, (0x1600 + (ch - 96) * 16 + chr_y));
@@ -579,10 +578,8 @@ static uint64_t _mc6847_decode_scanline(mc6847_t* vdg, uint64_t pins, int y) {
 					}
                     pins = vdg->fetch_cb(pins, ud);
                     m = MC6847_GET_DATA(pins);                    
-#endif                    
-                } else {
-                    m = _mc6847_font[(chr-32)*12 + chr_y];
                 }
+#endif                    
                 if (pins & MC6847_INV) {
                     m = ~m;
                 }

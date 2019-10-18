@@ -128,6 +128,7 @@ typedef struct {
     uint8_t mmc_latch;
     uint8_t gmode;
     uint8_t iplk;
+    bool fs;
     uint32_t tick_count;
     clk_t clk;
     mem_t mem;
@@ -289,6 +290,7 @@ void spc1000_reset(spc1000_t* sys) {
     beeper_reset(&sys->beeper);
     _spc1000_init_memorymap(sys);
     z80_set_pc(&sys->cpu, 0x0000);
+    sys->iplk = 0;
 }
 
 void spc1000_exec(spc1000_t* sys, uint32_t micro_seconds) {
@@ -358,7 +360,15 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
 
     /* tick the video chip */
     mc6847_tick(&sys->vdg);
-
+    if (!sys->fs && ((&sys->vdg)->pins & MC6847_FS))
+    {
+        pins |= Z80_INT;
+        sys->fs = true;
+    }
+    if (!((&sys->vdg)->pins & MC6847_FS))
+    {
+        sys->fs = false;
+    }
     /* tick audio systems */
     for (int i = 0; i < num_ticks; i++) {
         sys->tick_count++;
@@ -386,7 +396,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
         const uint16_t addr = Z80_GET_ADDR(pins);
 		uint8_t data = Z80_GET_DATA(pins);
         if (pins & Z80_RD) {
-            Z80_SET_DATA(pins, &sys->iplk ? sys->rom[addr&0x7fff] : sys->ram[addr]);
+            Z80_SET_DATA(pins, !sys->iplk ? sys->rom[addr&0x7fff] : sys->ram[addr]);
         }
         else if (pins & Z80_WR) {
             sys->ram[addr] = Z80_GET_DATA(pins);
@@ -398,12 +408,13 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
         if (pins & Z80_RD) {
             if (Port >= 0x8000 && Port <= 0x8009) {
                // Z80_SET_DATA(pins, &sys->keyMatrix[Port - 0x8009]);
+               Z80_SET_DATA(pins, ~kbd_test_lines(&sys->kbd, 1<<(Port-0x8000)));
             }
             else if ((Port & 0xe000) == 0x2000)
             {
                 Z80_SET_DATA(pins, sys->gmode);
             }
-            else if ((Port & 0xe000) == 0)
+            else if (Port < 0x2000)
             {
                 Z80_SET_DATA(pins, sys->vram[Port & 0x1fff]);
             }
@@ -494,19 +505,19 @@ static void _spc1000_init_keymap(spc1000_t* sys) {
     */
     kbd_init(&sys->kbd, 1);
     /* shift key is entire line 7 */
-    const int shift = (1<<0); kbd_register_modifier_line(&sys->kbd, 0, 7);
+    const int shift = (1<<0); kbd_register_modifier(&sys->kbd, 0, 0, 1);
     /* ctrl key is entire line 6 */
-    const int ctrl = (1<<1); kbd_register_modifier_line(&sys->kbd, 1, 6);
+    const int ctrl = (1<<1); kbd_register_modifier(&sys->kbd, 2, 0, 2);
     /* alpha-numeric keys */
     const char* keymap = 
         /* no shift */
-        "     ^]\\[ "/**/"3210      "/* */"-,;:987654"/**/"GFEDCBA@/."/**/"QPONMLKJIH"/**/" ZYXWVUTSR"
+        "        "/**/"~   caq1"/**/"  z]vsw2"/* */"   [bde3"/**/"   \\nfr4"/**/"    mgt5"/**/"  @x,hy6"/**/"   p.ju7"/**/"   :/ki8"/**/"  -0;lo9"
         /* shift */
-        "          "/* */"#\"!       "/**/"=<+*)('&%$"/**/"gfedcba ?>"/**/"qponmlkjih"/**/" zyxwvutsr";
+        "        "/**/"    CAQ!"/**/"  Z}VSW\""/**/"   {BDE#"/**/"   |NFR$"/* */"    MGT%"/**/"  'X<HY^"/**/"   P>JU&"/**/"   ;?KI*"/**/"  _)'LO(";
     for (int layer = 0; layer < 2; layer++) {
         for (int column = 0; column < 10; column++) {
-            for (int line = 0; line < 6; line++) {
-                int c = keymap[layer*60 + line*10 + column];
+            for (int line = 0; line < 8; line++) {
+                int c = keymap[layer*80 + line + column*8];
                 if (c != 0x20) {
                     kbd_register_key(&sys->kbd, c, column, line, layer?shift:0);
                 }
@@ -514,20 +525,28 @@ static void _spc1000_init_keymap(spc1000_t* sys) {
         }
     }
     /* special keys */
-    kbd_register_key(&sys->kbd, 0x20, 9, 0, 0);         /* space */
+    kbd_register_key(&sys->kbd, 0x20, 1, 2, 0);         /* space */
+    kbd_register_key(&sys->kbd, 0x0D, 1, 3, 0);         /* return/enter */
+    kbd_register_key(&sys->kbd, 0x0C, 3, 0, 0);         /* backspace */
+    kbd_register_key(&sys->kbd, 0x08, 5, 2, 0);         /* key left */
+    kbd_register_key(&sys->kbd, 0x09, 4, 2, 0);         /* key right */
+    kbd_register_key(&sys->kbd, 0x0A, 8, 2, 0);         /* key down */
+    kbd_register_key(&sys->kbd, 0x0B, 7, 2, 0);         /* key up */
+    kbd_register_key(&sys->kbd, 0x1D, 0, 2, ctrl);         /* ctrl */
+#if 0    
     kbd_register_key(&sys->kbd, 0x01, 4, 1, 0);         /* backspace */
     kbd_register_key(&sys->kbd, 0x07, 0, 3, ctrl);      /* Ctrl+G: bleep */
     kbd_register_key(&sys->kbd, 0x08, 3, 0, shift);     /* key left */
     kbd_register_key(&sys->kbd, 0x09, 3, 0, 0);         /* key right */
     kbd_register_key(&sys->kbd, 0x0A, 2, 0, shift);     /* key down */
     kbd_register_key(&sys->kbd, 0x0B, 2, 0, 0);         /* key up */
-    kbd_register_key(&sys->kbd, 0x0D, 6, 1, 0);         /* return/enter */
     kbd_register_key(&sys->kbd, 0x0C, 5, 4, ctrl);      /* Ctrl+L clear screen */
     kbd_register_key(&sys->kbd, 0x0E, 3, 4, ctrl);      /* Ctrl+N page mode on */
     kbd_register_key(&sys->kbd, 0x0F, 2, 4, ctrl);      /* Ctrl+O page mode off */
     kbd_register_key(&sys->kbd, 0x15, 6, 5, ctrl);      /* Ctrl+U end screen */
     kbd_register_key(&sys->kbd, 0x18, 3, 5, ctrl);      /* Ctrl+X cancel */
     kbd_register_key(&sys->kbd, 0x1B, 0, 5, 0);         /* escape */
+#endif    
 }
 
 static uint32_t _spc1000_xorshift32(uint32_t x) {
