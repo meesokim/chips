@@ -96,6 +96,7 @@ typedef struct {
     uint32_t mod_masks[KBD_MAX_MOD_KEYS];
     /* currently pressed keys (bitmask==0 is empty slot) */
     key_state_t key_buffer[KBD_MAX_PRESSED_KEYS];
+	uint8_t keyMatrix[10];
 } kbd_t;
 
 /* initialize a keyboard matrix instance */
@@ -126,6 +127,8 @@ uint16_t kbd_scan_lines(kbd_t* kbd);
 void kbd_set_active_lines(kbd_t* kbd, uint16_t line_mask);
 /* scan active columns (used together with kbd_set_active_lines */
 uint16_t kbd_scan_columns(kbd_t* kbd);
+/* scan lines for spc1000 */
+uint8_t kbd_scanlines(kbd_t* kbd, uint16_t column_mask);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -160,12 +163,24 @@ void kbd_init(kbd_t* kbd, int sticky_count) {
 void kbd_update(kbd_t* kbd) {
     CHIPS_ASSERT(kbd);
     kbd->frame_count++;
-    /* check for sticky keys that should be released */
+	/* check for sticky keys that should be released */
     for (int i = 0; i < KBD_MAX_PRESSED_KEYS; i++) {
         key_state_t* k = &kbd->key_buffer[i];
         if (k->released_frame != 0) {
             if (kbd->frame_count > (k->pressed_frame + kbd->sticky_count)) {
-                k->mask = 0;
+				uint32_t mask = kbd->key_masks[k->key];
+				int i = 0;
+				for (i = 0; i < KBD_MAX_COLUMNS; i++)
+				{
+					if ((1 << (i + KBD_MAX_LINES)) & mask)
+						break;
+				}
+				if (i < KBD_MAX_COLUMNS)
+				{
+					uint8_t *m = &kbd->keyMatrix[i];
+					*m &= ~(mask & 0xff);
+				}
+				k->mask = 0;
                 k->key = 0;
                 k->pressed_frame = 0;
                 k->released_frame = 0;
@@ -210,6 +225,18 @@ void kbd_key_down(kbd_t* kbd, int key) {
        if yes, just update its pressed-frame and return,
        otherwise find a new, free keybuffer slot
     */
+	uint32_t mask = kbd->key_masks[key];
+	int i = 0;
+	for (i = 0; i < KBD_MAX_COLUMNS; i++)
+	{
+		if ((1 << (i + KBD_MAX_LINES)) & mask)
+			break;
+	}
+	if (i < KBD_MAX_COLUMNS)
+	{
+		uint8_t *m = &kbd->keyMatrix[i];
+		*m |= (mask & 0xff);
+	}
     for (int i = 0; i < KBD_MAX_PRESSED_KEYS; i++) {
         key_state_t* k = &kbd->key_buffer[i];
         if (k->key == key) {
@@ -250,14 +277,22 @@ static uint16_t _kbd_lines(uint32_t key_mask) {
     return key_mask & ((1<<KBD_MAX_LINES)-1);
 }
 
-/* extract modifier mask bits from a 32-bit key mask */
+/* extract modifier mask bits a 32-bit key mask */
 static uint32_t _kbd_mod(uint32_t key_mask) {
     return key_mask & ((1<<KBD_MAX_MOD_KEYS)-1)<<(KBD_MAX_COLUMNS+KBD_MAX_LINES);
 }
 
+/* scan keyboard matrix lines by column mask for spc1000 */
+uint8_t kbd_scanlines(kbd_t* kbd, uint16_t column_mask) {
+	CHIPS_ASSERT(kbd);
+	int i = 0;
+	for (; i < KBD_MAX_COLUMNS; i++)
+		if (((1 << i) & column_mask) && kbd->keyMatrix[i])
+			return ~kbd->keyMatrix[i];
+	return 0xff;
+}
 /* scan keyboard matrix lines by column mask */
 uint16_t kbd_test_lines(kbd_t* kbd, uint16_t column_mask) {
-    CHIPS_ASSERT(kbd);
     uint16_t line_bits = 0;
     for (int key_index = 0; key_index < KBD_MAX_PRESSED_KEYS; key_index++) {
         const uint32_t key_mask = kbd->key_buffer[key_index].mask;

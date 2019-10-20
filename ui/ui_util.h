@@ -62,6 +62,8 @@ void ui_util_b8(const char* label, uint8_t val);
 uint32_t ui_util_color(int imgui_color);
 /* inject the common options menu */
 void ui_util_options_menu(double time_ms);
+/* inject the common options menu */
+void ui_util_options_menu_time(uint64_t tick);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -169,13 +171,40 @@ void ui_util_options_menu(double time_ms, bool stopped) {
         }
         ImGui::EndMenu();
     }
-    ImGui::SameLine(ImGui::GetWindowWidth() - 120);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 130);
     if (stopped) {
         ImGui::Text("emu: stopped");
     }
     else {
-        ImGui::Text("emu: %.2fms", time_ms);
+        if (stopped) 
+            ImGui::Text("emu: stopped");
+        else
+            ImGui::Text("emu: %.2f", time_ms);
     }
+}
+
+void ui_util_options_menu_time(uint64_t tick, bool stopped) {
+    if (ImGui::BeginMenu("Options")) {
+        ImGui::SliderFloat("UI Alpha", &ImGui::GetStyle().Alpha, 0.1f, 1.0f);
+        ImGui::SliderFloat("BG Alpha", &ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w, 0.1f, 1.0f);
+        static int theme = 0;
+        if (ImGui::RadioButton("Dark Theme", &theme, 0)) {
+            ImGui::StyleColorsDark();
+        }
+        if (ImGui::RadioButton("Light Theme", &theme, 1)) {
+            ImGui::StyleColorsLight();
+        }
+        if (ImGui::RadioButton("Classic Theme", &theme, 2)) {
+            ImGui::StyleColorsClassic();
+        }
+        ImGui::EndMenu();
+    }
+    ImGui::SameLine(ImGui::GetWindowWidth() - 200);
+    int hh = (int) (tick / 60 / 60 / 4000000);
+    int mm = (int) (tick / 60 / 4000000 % 60);
+    int ss = (int) (tick / 4000000 % 60);
+    int ms = (int) (tick / 40000 % 100);
+    ImGui::Text("Elapsed Time: %02d:%02d:%02d.%02d", hh, mm, ss, ms);
 }
 
 #ifdef _MSC_VER
