@@ -237,16 +237,17 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
                 val = sys->tape_buf[sys->tape_pos++] == '1';
                 if (sys->tape_pos >= sys->tape_size)
                     sys->tape_pos = 0;                
-                printf("%d", val);
-                fflush(stdout);
             }
             else
 #endif                
+            if (sys->ram[0x23b] != 0xc9 || sys->ram[0x3c4] != 0xc9)
             {
                 int t = (sys->tick_count - sys->motor_start) >> 5;
                 if (t > (*tap ? LTONE : STONE))
                 {
                     *tap = sys->tape_buf[sys->tape_pos++] == '1';
+                    printf("%d", *tap);
+                    fflush(stdout);
                     if (sys->tape_pos > sys->tape_size)
                         sys->tape_pos = 0;
                     sys->motor_start = sys->tick_count;
@@ -259,8 +260,7 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
                     else
                         val = 0; // low
                 }
-                
-            }
+             }
         }
 		val = (val > 0) << 7 | !sys->tapeMotor << 6 | sys->printStatus << 2;
 	}
@@ -325,15 +325,30 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
 
     /* CPU start state */
     z80_set_pc(&sys->cpu, 0x0000);
+#if 1
     sys->rom[0x23b] = 0xc9;
     sys->rom[0x3c4] = 0xc9;
-    sys->rom[0x164] = 0x2;
+    sys->rom[0x15e] = 0x3e;
+    sys->rom[0x15f] = 0x40;
+    sys->rom[0x160] = 0xdb;
+    sys->rom[0x161] = 0x03;
+    sys->rom[0x162] = 0x3e;
+    sys->rom[0x163] = 0x40;
+    sys->rom[0x164] = 0xdb;
+    sys->rom[0x165] = 0x03;
+    sys->rom[0x166] = 0xe6;
+    sys->rom[0x167] = 0x80;
+    sys->rom[0x168] = 0x28;
+    sys->rom[0x169] = 0xf8;
+    sys->rom[0x1ab] = 0x62;
     sys->rom[0x1fb] = 0x2;
     sys->rom[0x272] = 0x2;
     sys->rom[0x2b9] = 0x2;
     sys->rom[0x2cf] = 0x2;
-    sys->rom[0x267] = 0x4f;
-    sys->rom[0x268] = 0x2;
+    sys->rom[0x252] = 0x3;
+    sys->rom[0x28a] = 0x4f;
+    sys->rom[0x28b] = 0x2;
+#endif   
 }
 
 void spc1000_discard(spc1000_t* sys) {
@@ -510,6 +525,15 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
                 if (sys->tape_pos >= sys->tape_size)
                     sys->tape_pos = 0;
                 printf("%d", val);
+                fflush(stdout);
+                Z80_SET_DATA(pins, val << 7);
+            }
+            else if ((Port == 0x4003))
+            {
+                uint8_t val = sys->tape_buf[sys->tape_pos++] == '1';
+                if (sys->tape_pos >= sys->tape_size)
+                    sys->tape_pos = 0;
+                printf("|");
                 fflush(stdout);
                 Z80_SET_DATA(pins, val << 7);
             }
