@@ -226,27 +226,41 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
     spc1000_t *sys = (spc1000_t *) user_data;
     uint8_t val = 0;
     uint8_t *tap = &(sys->tap);
+    static bool motorstate = false;
     if (sys && port_id == AY38910_PORT_A)
     {
         if (sys->tapeMotor)
         {
-            int t = (sys->tick_count - sys->motor_start) >> 5;
-            if (t > (*tap ? LTONE : STONE))
+#if 0            
+            if (sys->ram[0x23b] == 0xc9 && sys->ram[0x3c4] == 0xc9)
             {
-                *tap = sys->tape_buf[sys->tape_pos++] == '1';
-                if (sys->tape_pos > sys->tape_size)
-                    sys->tape_pos = 0;
-                sys->motor_start = sys->tick_count;
-				t = 0;
+                val = sys->tape_buf[sys->tape_pos++] == '1';
+                if (sys->tape_pos >= sys->tape_size)
+                    sys->tape_pos = 0;                
+                printf("%d", val);
+                fflush(stdout);
             }
-			else
-			{
-				if (t > (*tap ? STONE : STONE / 2))
-					val = 1; // high
-				else
-					val = 0; // low
-			}
-//			printf("%d,%d,%d\n", val, t, *tap);
+            else
+#endif                
+            {
+                int t = (sys->tick_count - sys->motor_start) >> 5;
+                if (t > (*tap ? LTONE : STONE))
+                {
+                    *tap = sys->tape_buf[sys->tape_pos++] == '1';
+                    if (sys->tape_pos > sys->tape_size)
+                        sys->tape_pos = 0;
+                    sys->motor_start = sys->tick_count;
+                    t = 0;
+                }
+                else
+                {
+                    if (t > (*tap ? STONE : STONE / 2))
+                        val = 1; // high
+                    else
+                        val = 0; // low
+                }
+                
+            }
         }
 		val = (val > 0) << 7 | !sys->tapeMotor << 6 | sys->printStatus << 2;
 	}
@@ -311,6 +325,15 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
 
     /* CPU start state */
     z80_set_pc(&sys->cpu, 0x0000);
+    sys->rom[0x23b] = 0xc9;
+    sys->rom[0x3c4] = 0xc9;
+    sys->rom[0x164] = 0x2;
+    sys->rom[0x1fb] = 0x2;
+    sys->rom[0x272] = 0x2;
+    sys->rom[0x2b9] = 0x2;
+    sys->rom[0x2cf] = 0x2;
+    sys->rom[0x267] = 0x4f;
+    sys->rom[0x268] = 0x2;
 }
 
 void spc1000_discard(spc1000_t* sys) {
@@ -481,6 +504,15 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
                 /* read from AY-3-8912 (11............0.) */
                 pins = ay38910_iorq(&sys->ay, AY38910_BC1|pins) & Z80_PIN_MASK;
             }
+            else if ((Port == 0x4002))
+            {
+                uint8_t val = sys->tape_buf[sys->tape_pos++] == '1';
+                if (sys->tape_pos >= sys->tape_size)
+                    sys->tape_pos = 0;
+                printf("%d", val);
+                fflush(stdout);
+                Z80_SET_DATA(pins, val << 7);
+            }
             else if ((Port & 0xe000) == 0xa000)
             {
                 sys->iplk = !sys->iplk;
@@ -519,16 +551,29 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
             }
             else if ((Port & 0xe000) == 0x6000)
             {
-                if (data & 0x2)
+                if (data & 0x2 && !sys->pulse)
                 {
-                    sys->pulse = !sys->pulse; 
-                } else if (sys->pulse)
+                    sys->pulse = true; 
+#if 0                    
+                    if (sys->ram[0x23b] == 0xc9 && sys->ram[0x3c4] == 0xc9)
+                    {
+                        sys->tape_pos--;
+                        printf("-");
+                        fflush(stdout);
+                    }
+#endif              
+                }
+                else
+                    sys->pulse = false;
+                
+                if (sys->pulse)
                 {
                     sys->tapeMotor = !sys->tapeMotor;
                     if (sys->tapeMotor)
                     {
                         sys->motor_start = sys->tick_count;
-                        sys->speed = 10.0;
+                        if (sys->ram[0x23b] != 0xc9 && sys->ram[0x3c4] != 0xc9)
+                            sys->speed = 100.0;
                     }
                     else
                     {
