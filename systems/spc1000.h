@@ -216,7 +216,7 @@ static void _spc1000_osload(spc1000_t* sys);
 #define _SPC1K_DEFAULT(val,def) (((val) != 0) ? (val) : (def))
 #define _SPC1K_CLEAR(val) memset(&val, 0, sizeof(val))
 
-#define STONE 100/2
+#define STONE 90/2
 #define LTONE (STONE*2)
 
 #include <stdio.h>
@@ -253,7 +253,6 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
                     sys->motor_start = sys->tick_count;
                     t = 0;
                 }
-                else
                 {
                     if (t > (*tap ? STONE : STONE / 2))
                         val = 1; // high
@@ -325,7 +324,7 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
 
     /* CPU start state */
     z80_set_pc(&sys->cpu, 0x0000);
-#if 1
+#if 0
     sys->rom[0x23b] = 0xc9;
     sys->rom[0x3c4] = 0xc9;
     sys->rom[0x15e] = 0x3e;
@@ -522,7 +521,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
             else if ((Port == 0x4002))
             {
                 uint8_t val = sys->tape_buf[sys->tape_pos++] == '1';
-                if (sys->tape_pos >= sys->tape_size)
+                if (sys->tape_pos > sys->tape_size)
                     sys->tape_pos = 0;
                 printf("%d", val);
                 fflush(stdout);
@@ -531,7 +530,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
             else if ((Port == 0x4003))
             {
                 uint8_t val = sys->tape_buf[sys->tape_pos++] == '1';
-                if (sys->tape_pos >= sys->tape_size)
+                if (sys->tape_pos > sys->tape_size)
                     sys->tape_pos = 0;
                 printf("|");
                 fflush(stdout);
@@ -582,7 +581,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
                     if (sys->ram[0x23b] == 0xc9 && sys->ram[0x3c4] == 0xc9)
                     {
                         sys->tape_pos--;
-                        printf("-");
+                        //printf("-");
                         fflush(stdout);
                     }
 #endif              
