@@ -111,7 +111,7 @@ typedef struct {
     int rom_spc1000_size;
     
     /* Tape image */
-    const char* tap_spc1000;
+    const unsigned char* tap_spc1000;
     int tap_spc1000_size;
 } spc1000_desc_t;
 
@@ -246,7 +246,7 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
                 if (t > (*tap ? LTONE : STONE))
                 {
                     *tap = sys->tape_buf[sys->tape_pos++] == '1';
-                    printf("%d", *tap);
+                    printf("%d\r", 100 * sys->tape_pos / sys->tape_size);
                     fflush(stdout);
                     if (sys->tape_pos > sys->tape_size)
                         sys->tape_pos = 0;
@@ -261,7 +261,7 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
                 }
              }
         }
-		val = (val > 0) << 7 | !sys->tapeMotor << 6 | sys->printStatus << 2;
+		val = (val > 0) << 7 | !sys->tapeMotor << 6 | sys->printStatus << 2 | 0x1f;
 	}
     return val;
 }
@@ -455,13 +455,15 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
 
     /* tick the video chip */
     mc6847_tick(&sys->vdg);
-    if (!sys->fs && ((&sys->vdg)->pins & MC6847_FS))
+    if ((sys->vdg.pins & MC6847_FS))
     {
-        pins |= Z80_INT;
+        if (!sys->fs)
+            pins |= Z80_INT;
         sys->fs = true;
     }
-    if (!((&sys->vdg)->pins & MC6847_FS))
-    {
+    else
+    {   if (sys->fs)
+            pins |= Z80_INT;
         sys->fs = false;
     }
     /* tick audio systems */
@@ -596,7 +598,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
                     {
                         sys->motor_start = sys->tick_count;
                         if (sys->ram[0x23b] != 0xc9 && sys->ram[0x3c4] != 0xc9)
-                            sys->speed = 100.0;
+                            sys->speed = 10.0;
                     }
                     else
                     {
@@ -674,6 +676,7 @@ static void _spc1000_init_keymap(spc1000_t* sys) {
     kbd_register_key(&sys->kbd, 0x20, 1, 2, 0);         /* space */
     kbd_register_key(&sys->kbd, 0x0D, 1, 3, 0);         /* return/enter */
     kbd_register_key(&sys->kbd, 0x0C, 3, 0, 0);         /* backspace */
+    kbd_register_key(&sys->kbd, 0x07, 3, 2, 0);         /* ESC */
     kbd_register_key(&sys->kbd, 0x08, 5, 2, 0);         /* key left */
     kbd_register_key(&sys->kbd, 0x09, 4, 2, 0);         /* key right */
     kbd_register_key(&sys->kbd, 0x0A, 8, 2, 0);         /* key down */

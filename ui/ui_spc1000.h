@@ -176,19 +176,7 @@ static void _ui_spc1000_update_memmap(ui_spc1000_t* ui) {
 
 static uint8_t* _ui_spc1000_memptr(spc1000_t* spc1000, int layer, uint16_t addr) {
     if (0 == layer) {
-        /* ZX128 ROM, RAM 5, RAM 2, RAM 0 */
-        if (addr < 0x4000) {
-            return &spc1000->ram[addr];
-        }
-        else if (addr < 0x8000) {
-            return &spc1000->ram[addr - 0x4000];
-        }
-        else if (addr < 0xC000) {
-            return &spc1000->ram[addr - 0x8000];
-        }
-        else {
-            return &spc1000->ram[addr - 0xC000];
-        }
+        return &spc1000->ram[addr];
     }
     else if (1 == layer) {
         if (addr < 0x2000)
@@ -420,6 +408,22 @@ void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
         ui_dasm_draw(&ui->dasm[i]);
     }
     ui_dbg_draw(&ui->dbg);
+    if (ui->spc1000->tapeMotor)
+    {
+        bool g_bMenuOpen = false;
+        int w = (100 * ui->spc1000->tape_pos) / ui->spc1000->tape_size;
+        ImVec2 xy(0,22);// = ImGui::GetItemRectMin();
+        ImGui::Begin("A", &g_bMenuOpen, ImVec2((float)sapp_width()*sapp_dpi_scale(),20), 0.f, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysUseWindowPadding);
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.WindowBorderSize = 0.0f;
+        ImGui::SetWindowFocus("top"); 
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (sapp_width() + xy.x), 60), IM_COL32(0,0,180,255));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (w * sapp_width() / 100 + xy.x), 60), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
+        ImGui::SetWindowPos(xy);
+        ImGui::SetWindowFontScale(1.2f);
+        ImGui::Text("Tape: %3d%%", w);
+        ImGui::End();
+    }
 }
 
 bool ui_spc1000_before_exec(ui_spc1000_t* ui) {

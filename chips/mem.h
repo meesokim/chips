@@ -213,7 +213,7 @@ typedef struct {
 } mem_t;
 
 /* initialize a new mem instance */
-void mem_init(mem_t* mem);
+static void mem_init(mem_t* mem);
 /* map a range of RAM */
 void mem_map_ram(mem_t* mem, int layer, uint16_t addr, uint32_t size, uint8_t* ptr);
 /* map a range of ROM */
