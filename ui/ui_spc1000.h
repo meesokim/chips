@@ -198,9 +198,9 @@ static uint8_t _ui_spc1000_mem_read(int layer, uint16_t addr, void* user_data) {
 static void _ui_spc1000_mem_write(int layer, uint16_t addr, uint8_t data, void* user_data) {
     CHIPS_ASSERT(user_data);
     spc1000_t* spc1000 = (spc1000_t*) user_data;
-    if ((layer == 0)) {
+    if (layer == 0) {
         mem_wr(&spc1000->mem, addr, data);
-    } else if ((layer == 1)) {
+    } else if (layer == 1) {
         spc1000->vram[addr] = data;
     };
 }
@@ -415,9 +415,9 @@ void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
         ImVec2 xy(0,22);// = ImGui::GetItemRectMin();
         ImGui::Begin("A", &g_bMenuOpen, ImVec2((float)sapp_width()*sapp_dpi_scale(),20), 0.f, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysUseWindowPadding);
         ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowBorderSize = 0.0f;
+        style.WindowBorderSize = 0.0f;  
         ImGui::SetWindowFocus("top"); 
-        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (sapp_width() + xy.x), 60), IM_COL32(0,0,180,255));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (sapp_width() * sapp_dpi_scale() + xy.x), 60), IM_COL32(0,0,180,255));
         ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (w * sapp_width() / 100 + xy.x), 60), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
         ImGui::SetWindowPos(xy);
         ImGui::SetWindowFontScale(1.2f);

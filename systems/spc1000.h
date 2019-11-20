@@ -57,6 +57,7 @@
 */
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -190,7 +191,7 @@ void spc1000_remove_tape(spc1000_t* sys);
 /* load a ZX Z80 file into the emulator */
 bool spc1000_quickload(spc1000_t* sys, const uint8_t* ptr, int num_bytes); 
 
-static uint8_t _ay38910_callback(int port_id, void* user_data);
+//static uint8_t _ay38910_callback(int port_id, void* user_data);
 
 
 #ifdef __cplusplus
@@ -212,6 +213,7 @@ static uint64_t _spc1000_vdg_fetch(uint64_t pins, void* user_data);
 static void _spc1000_init_keymap(spc1000_t* sys);
 static void _spc1000_init_memorymap(spc1000_t* sys);
 static void _spc1000_osload(spc1000_t* sys);
+bool spc1000_tapeload(spc1000_t* sys, const uint8_t* ptr, int num_bytes);
 
 #define _SPC1K_DEFAULT(val,def) (((val) != 0) ? (val) : (def))
 #define _SPC1K_CLEAR(val) memset(&val, 0, sizeof(val))
@@ -226,7 +228,7 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
     spc1000_t *sys = (spc1000_t *) user_data;
     uint8_t val = 0;
     uint8_t *tap = &(sys->tap);
-    static bool motorstate = false;
+//    static bool motorstate = false;
     if (sys && port_id == AY38910_PORT_A)
     {
         if (sys->tapeMotor)
@@ -315,7 +317,7 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
     ay_desc.user_data = sys;
     ay_desc.in_cb = _ay8910_read_callback;
     
-    spc1000_insert_tape(sys, desc->tap_spc1000, desc->tap_spc1000_size); 
+    spc1000_tapeload(sys, desc->tap_spc1000, desc->tap_spc1000_size); 
     ay38910_init(&sys->ay, &ay_desc); 
     
     /* setup memory map and keyboard matrix */
@@ -491,7 +493,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
     if (pins & Z80_MREQ) 
     {
         const uint16_t addr = Z80_GET_ADDR(pins);
-		uint8_t data = Z80_GET_DATA(pins);
+		//uint8_t data = Z80_GET_DATA(pins);
         if (pins & Z80_RD) {
             Z80_SET_DATA(pins, !sys->iplk ? sys->rom[addr&0x7fff] : sys->ram[addr]);
         }
@@ -758,11 +760,37 @@ bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
     return true;
 }
 
-
 bool spc1000_tapeload(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
-    sys->tape_size = num_bytes;
-    sys->tape_pos = 0;
-    memcpy(sys->tape_buf, ptr, num_bytes);
+    int bytes = 0, pos = 0, s = 0;
+    uint8_t *tapedata; 
+    if (*ptr != '1' && *ptr != '0')
+    {
+        if (!strcmp(ptr, "SPC-1000"))
+        {
+            s = 16;
+            num_bytes -= 16;
+        }
+        bytes = num_bytes * 8;
+        tapedata = (uint8_t *) malloc(bytes);
+        for(int i = s; i < num_bytes; i++)
+        {
+            for (int j = 0; j < 8; j++)
+            {
+                tapedata[pos] = '0' + ((ptr[i] & (1 << (7 - j))) > 0 ? 1 : 0);
+                pos++;
+            }
+        }
+        sys->tape_size = bytes;
+        sys->tape_pos = 0;
+        memcpy(sys->tape_buf, tapedata, bytes);
+        free(tapedata);
+    }
+    else
+    {
+        sys->tape_size = num_bytes;
+        sys->tape_pos = 0;
+        memcpy(sys->tape_buf, ptr, num_bytes);
+    }
     return true;
 }
 
@@ -811,6 +839,7 @@ void spc1000_remove_tape(spc1000_t* sys) {
      - Data format:   <....data....>           ) 1 to #FF bytes
                       <Checksum>               ) LSB sum of all data byte
 */
+#if 0
 void _spc1000_osload(spc1000_t* sys) {
     bool success = false;
 
@@ -840,6 +869,6 @@ void _spc1000_osload(spc1000_t* sys) {
         spc1000_remove_tape(sys);
     }
 }
-
+#endif
 
 #endif /* CHIPS_IMPL */
