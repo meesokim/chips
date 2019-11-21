@@ -109,8 +109,10 @@ void ui_spc1000_after_exec(ui_spc1000_t* ui);
 #pragma clang diagnostic ignored "-Wmissing-field-initializers"
 #endif
 
+static bool menuon;
 static void _ui_spc1000_draw_menu(ui_spc1000_t* ui, uint64_t time_ms) {
     CHIPS_ASSERT(ui && ui->spc1000 && ui->boot_cb);
+    menuon = true;
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("System")) {
             if (ImGui::MenuItem("Reset")) {
@@ -394,7 +396,8 @@ void ui_spc1000_discard(ui_spc1000_t* ui) {
 
 void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
     CHIPS_ASSERT(ui && ui->spc1000);
-    //_ui_spc1000_draw_menu(ui, ui->spc1000->tick_count);
+    menuon = false;
+    _ui_spc1000_draw_menu(ui, ui->spc1000->tick_count);
     if (ui->memmap.open) {
         _ui_spc1000_update_memmap(ui);
     }
@@ -411,14 +414,19 @@ void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
     if (ui->spc1000->tapeMotor)
     {
         bool g_bMenuOpen = false;
+        float y = 0;
         int w = (100 * ui->spc1000->tape_pos) / ui->spc1000->tape_size;
-        ImVec2 xy(0,22);// = ImGui::GetItemRectMin();
-        ImGui::Begin("A", &g_bMenuOpen, ImVec2((float)sapp_width()*sapp_dpi_scale(),20), 0.f, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysUseWindowPadding);
+        if (menuon)
+            y = 23;
+        else 
+            y = 5;
+        ImVec2 xy(0,y);// = ImGui::GetItemRectMin();
+        ImGui::Begin("A", &g_bMenuOpen, ImVec2((float)sapp_width()*sapp_dpi_scale(),y), 0.f, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysUseWindowPadding);
         ImGuiStyle& style = ImGui::GetStyle();
         style.WindowBorderSize = 0.0f;  
         ImGui::SetWindowFocus("top"); 
-        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (sapp_window_width() + xy.x), 60), IM_COL32(0,0,180,255));
-        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (w * sapp_width() / 100 + xy.x), 60), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,0), ImVec2((float) (sapp_window_width() + xy.x), 60), IM_COL32(0,0,100,255));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,0), ImVec2((float) (w * sapp_width() / 100 + xy.x), 60), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
         ImGui::SetWindowPos(xy);
         ImGui::SetWindowFontScale(1.2f);
         ImGui::Text("Tape: %3d%%", w);
