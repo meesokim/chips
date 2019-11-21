@@ -394,7 +394,7 @@ void ui_spc1000_discard(ui_spc1000_t* ui) {
 
 void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
     CHIPS_ASSERT(ui && ui->spc1000);
-    _ui_spc1000_draw_menu(ui, ui->spc1000->tick_count);
+    //_ui_spc1000_draw_menu(ui, ui->spc1000->tick_count);
     if (ui->memmap.open) {
         _ui_spc1000_update_memmap(ui);
     }
@@ -417,7 +417,7 @@ void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
         ImGuiStyle& style = ImGui::GetStyle();
         style.WindowBorderSize = 0.0f;  
         ImGui::SetWindowFocus("top"); 
-        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (sapp_width() * sapp_dpi_scale() + xy.x), 60), IM_COL32(0,0,180,255));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (sapp_window_width() + xy.x), 60), IM_COL32(0,0,180,255));
         ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,25), ImVec2((float) (w * sapp_width() / 100 + xy.x), 60), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
         ImGui::SetWindowPos(xy);
         ImGui::SetWindowFontScale(1.2f);
