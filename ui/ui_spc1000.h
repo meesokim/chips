@@ -161,7 +161,36 @@ static void _ui_spc1000_draw_menu(ui_spc1000_t* ui, uint64_t time_ms) {
             }
             ImGui::EndMenu();
         }
-        ui_util_options_menu_time(time_ms, ui->dbg.dbg.stopped);
+        if (ImGui::BeginMenu("Tape")) {
+            int counter = 0;
+            float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+
+            static int e = 0;
+            for(int i = 0; i < ui->spc1000->tape_num; i++)
+            {
+                if (ImGui::RadioButton(ui->spc1000->tape_names[i], &e, i))
+                {
+                    spc1000_set_tape_num(ui->spc1000, e = i);
+                }
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Cassette")) {
+            static int d = 0;
+            for(int i = 0; i < DUMP_NUM_ITEMS; i++)
+            {
+                if (strstr(dump_items[i].name, "_cas") || strstr(dump_items[i].name, "_tap"))
+                {
+                    if (ImGui::RadioButton(dump_items[i].name, &d, i))
+                    {
+                        d = i;
+                        spc1000_insert_tape(ui->spc1000, dump_items[i].ptr, dump_items[i].size);
+                    }
+                }
+            }
+            ImGui::EndMenu();
+        }
+        //ui_util_options_menu_time(time_ms, ui->dbg.dbg.stopped);
         ImGui::EndMainMenuBar();
     }
     
@@ -415,21 +444,21 @@ void ui_spc1000_draw(ui_spc1000_t* ui, double time_ms) {
     {
         bool g_bMenuOpen = false;
         float y = 0;
-        int w = (100 * ui->spc1000->tape_pos) / ui->spc1000->tape_size;
+        float w = ((float) (100 * ui->spc1000->tape_pos)) / ui->spc1000->tape_size;
         if (menuon)
             y = 23;
         else 
             y = 5;
         ImVec2 xy(0,y);// = ImGui::GetItemRectMin();
-        ImGui::Begin("A", &g_bMenuOpen, ImVec2((float)sapp_width()*sapp_dpi_scale(),y), 0.f, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysUseWindowPadding);
+        ImGui::Begin("A", &g_bMenuOpen, ImVec2((float)sapp_window_width(),y), 0.f, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_AlwaysUseWindowPadding);
         ImGuiStyle& style = ImGui::GetStyle();
         style.WindowBorderSize = 0.0f;  
         ImGui::SetWindowFocus("top"); 
-        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,0), ImVec2((float) (sapp_window_width() + xy.x), 60), IM_COL32(0,0,100,255));
-        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,0), ImVec2((float) (w * sapp_width() / 100 + xy.x), 60), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
-        ImGui::SetWindowPos(xy);
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,23), ImVec2((float) (sapp_window_width()), 40), IM_COL32(0,0,100,255));
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0,23), ImVec2((float) (w * sapp_width() / 100.0f), 40), IM_COL32(255,0,0,255));//ImVec2(10,10), ImVec2(320,20), IM_COL32(0,255,255,55));
+        ImGui::SetWindowPos(ImVec2(2,14));
         ImGui::SetWindowFontScale(1.2f);
-        ImGui::Text("Tape: %3d%%", w);
+        ImGui::Text("Tape Loading: %3d%%", (int)w);
         ImGui::End();
     }
 }

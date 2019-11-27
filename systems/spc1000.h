@@ -150,6 +150,9 @@ typedef struct {
     /* tape loading */
     int tape_size;  /* tape_size is > 0 if a tape is inserted */
     int tape_pos;
+    int tape_num;
+    char *tape_names[50];
+    int tape_numpos[50];
     uint8_t tape_buf[SPC1K_MAX_TAPE_SIZE];
     bool tapeMotor;
     bool pulse;
@@ -186,6 +189,8 @@ spc1000_joystick_type_t spc1000_joystick_type(spc1000_t* sys);
 void spc1000_joystick(spc1000_t* sys, uint8_t mask);
 /* insert a tape for loading (must be an spc1000 TAP file), data will be copied */
 bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes);
+/* set a tape pos with number order */
+void spc1000_set_tape_num(spc1000_t* sys, int num);
 /* remove tape */
 void spc1000_remove_tape(spc1000_t* sys);
 /* load a ZX Z80 file into the emulator */
@@ -213,7 +218,7 @@ static uint64_t _spc1000_vdg_fetch(uint64_t pins, void* user_data);
 static void _spc1000_init_keymap(spc1000_t* sys);
 static void _spc1000_init_memorymap(spc1000_t* sys);
 static void _spc1000_osload(spc1000_t* sys);
-bool spc1000_tapeload(spc1000_t* sys, const uint8_t* ptr, int num_bytes);
+//bool spc1000_tapeload(spc1000_t* sys, const uint8_t* ptr, int num_bytes);
 
 #define _SPC1K_DEFAULT(val,def) (((val) != 0) ? (val) : (def))
 #define _SPC1K_CLEAR(val) memset(&val, 0, sizeof(val))
@@ -248,7 +253,7 @@ uint8_t _ay8910_read_callback(int port_id, void* user_data)
                 if (t > (*tap ? LTONE : STONE))
                 {
                     *tap = sys->tape_buf[sys->tape_pos++] == '1';
-                    printf("%d\r", 100 * sys->tape_pos / sys->tape_size);
+                    //printf("%d\r", 100 * sys->tape_pos / sys->tape_size);
                     fflush(stdout);
                     if (sys->tape_pos > sys->tape_size)
                         sys->tape_pos = 0;
@@ -317,7 +322,6 @@ void spc1000_init(spc1000_t* sys, const spc1000_desc_t* desc) {
     ay_desc.user_data = sys;
     ay_desc.in_cb = _ay8910_read_callback;
     
-    spc1000_tapeload(sys, desc->tap_spc1000, desc->tap_spc1000_size); 
     ay38910_init(&sys->ay, &ay_desc); 
     
     /* setup memory map and keyboard matrix */
@@ -387,6 +391,8 @@ void spc1000_reset(spc1000_t* sys) {
     _spc1000_init_memorymap(sys);
     z80_set_pc(&sys->cpu, 0x0000);
     sys->iplk = 0;
+    sys->tapeMotor = false;
+    sys->speed = 1.0;
 }
 
 void spc1000_exec(spc1000_t* sys, uint32_t micro_seconds) {
@@ -527,7 +533,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
                 uint8_t val = sys->tape_buf[sys->tape_pos++] == '1';
                 if (sys->tape_pos > sys->tape_size)
                     sys->tape_pos = 0;
-                printf("%d", val);
+                //printf("%d", val);
                 fflush(stdout);
                 Z80_SET_DATA(pins, val << 7);
             }
@@ -536,7 +542,7 @@ static uint64_t _spc1000_tick(int num_ticks, uint64_t pins, void* user_data) {
                 uint8_t val = sys->tape_buf[sys->tape_pos++] == '1';
                 if (sys->tape_pos > sys->tape_size)
                     sys->tape_pos = 0;
-                printf("|");
+                //printf("|");
                 fflush(stdout);
                 Z80_SET_DATA(pins, val << 7);
             }
@@ -746,6 +752,7 @@ typedef struct {
     uint16_t length;
 } _spc1000_tap_header;
 
+#if 0
 bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
     CHIPS_ASSERT(sys && sys->valid);
     CHIPS_ASSERT(ptr);
@@ -755,20 +762,84 @@ bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
         return false;
     }
     memcpy(sys->tape_buf, ptr, num_bytes);
+    
     sys->tape_pos = 0;
     sys->tape_size = num_bytes;
     return true;
 }
+#endif
+int skip_null_header(const uint8_t *data, int num)
+{
+    int header0 = 0, header1 = 0;
+    int rtn = -1;
+//    char str[100];
+    for(int i = 0; i < num; i++)
+    {
+        if (data[i] == '1')
+            header1++;
+        else if (header1 == 40)
+        {
+            header0++;
+            if (header0 == 40)
+            {
+                // memcpy(str, &data[i-80], 80);
+                // str[81] = 0;
+                // printf("header>%s\n", str);
+                rtn = i - 79;
+                break;
+            }
+        }
+        else 
+        {
+            header1 = 0;
+            header0 = 0;
+        }
+    }
+    fflush(stdout);
+    return rtn;    
+}
 
-bool spc1000_tapeload(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
-    int bytes = 0, pos = 0, s = 0;
+typedef struct  {
+	uint8_t type;
+	char name[17];
+	uint16_t size;
+	uint16_t load;
+	uint16_t jump;
+} HEADER;
+char getBytes(const uint8_t *data)
+{
+    char c = 0;
+    for(int i = 0; i < 8; i++)
+        c += (data[i] == '1' ? 1 << (7 -i) : 0);
+    return c;
+}
+char * get_header_info(const uint8_t *data)
+{
+    static HEADER head;  
+    // char header[100];
+    // memcpy(header, data, 80);
+    // printf("%s", header);
+    memset(head.name, 0, 16);
+    head.type = getBytes(data + 82);
+    for(int i = 0; i < 17; i++)
+    {
+        head.name[i] = getBytes(data + 91 + i * 9);
+        if (head.name[i] && (head.name[i] < '!' || head.name[i] > 'z'))
+            head.name[i] = ' ';
+    }
+    return head.name;
+}
+bool spc1000_insert_tape(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
+    int bytes = 0, pos = 0, s = 0, header1 = 0, header0 = 0, num = 0;
+    CHIPS_ASSERT(sys && sys->valid);
+    CHIPS_ASSERT(ptr);
+    spc1000_remove_tape(sys);    
     uint8_t *tapedata; 
     if (*ptr != '1' && *ptr != '0')
     {
         if (!strcmp(ptr, "SPC-1000"))
         {
             s = 16;
-            num_bytes -= 16;
         }
         bytes = num_bytes * 8;
         tapedata = (uint8_t *) malloc(bytes);
@@ -780,24 +851,69 @@ bool spc1000_tapeload(spc1000_t* sys, const uint8_t* ptr, int num_bytes) {
                 pos++;
             }
         }
-        sys->tape_size = bytes;
         sys->tape_pos = 0;
-        memcpy(sys->tape_buf, tapedata, bytes);
+        pos = 0;
+        pos = skip_null_header(tapedata, bytes);
+        printf("pos=%d\n", pos);
+        memcpy(sys->tape_buf, tapedata+pos, bytes-pos);
+        sys->tape_size = bytes-pos;
         free(tapedata);
     }
     else
     {
-        sys->tape_size = num_bytes;
+        tapedata = (uint8_t *) malloc(num_bytes);
         sys->tape_pos = 0;
-        memcpy(sys->tape_buf, ptr, num_bytes);
+        pos = 0;
+        for(int i = 0; i < num_bytes; i++)
+        {
+            if (ptr[i] == '1' || ptr[i] == '0')
+                tapedata[pos++] = ptr[i];
+        }
+        num_bytes = pos;
+        pos = skip_null_header(tapedata, num_bytes);
+        //printf("pos=%d\n", pos);
+        memcpy(sys->tape_buf, tapedata+pos, num_bytes-pos);
+        sys->tape_size = num_bytes-pos;
+        free(tapedata);
+    }
+    for(int i = 0; i < sys->tape_size; i++)
+    {
+        pos = skip_null_header(sys->tape_buf+i, sys->tape_size-i);
+        if (pos >= 0)
+        {
+            sys->tape_names[num] = (char *)malloc(18);
+            memcpy(sys->tape_names[num], get_header_info(sys->tape_buf+pos+i), 17);
+            sys->tape_numpos[num] = pos+i;
+            //printf("header#%d:%s(%d)\n", num+1, sys->tape_names[num], pos+i);
+            sys->tape_num = ++num;
+            i += pos + 800;
+        }
+        else
+            break;
     }
     return true;
+}
+
+void spc1000_set_tape_num(spc1000_t* sys, int num)
+{
+    sys->tape_pos = sys->tape_numpos[num] - 1;
+    if (sys->tape_pos  < 0)
+        sys->tape_pos = 0;
 }
 
 void spc1000_remove_tape(spc1000_t* sys) {
     CHIPS_ASSERT(sys && sys->valid);
     sys->tape_pos = 0;
     sys->tape_size = 0;
+    for(int i = 0; i < sys->tape_num; i++)
+    {
+        if (sys->tape_names[i])
+        {
+            free(sys->tape_names[i]);
+            sys->tape_names[i] = 0;
+        }
+    }
+    sys->tape_num = 0;
 }
 
 /*
